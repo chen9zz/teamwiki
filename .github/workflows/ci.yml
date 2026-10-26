@@ -63,5 +63,56 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm test
-      - run: npm run build
+      - name: Build and exercise production document/editor chunks
+        run: npm run test:production
 
+
+  containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prepare isolated demo settings
+        run: |
+          cp .env.example .env
+          python - <<'PY'
+          import secrets
+          from pathlib import Path
+          path = Path('.env')
+          text = path.read_text()
+          text = text.replace('teamwiki-local-password', secrets.token_hex(24))
+          text = text.replace('replace-with-a-random-secret-of-at-least-32-characters', secrets.token_hex(32))
+          path.write_text(text)
+          PY
+      - name: Validate, build and start complete stack
+        run: |
+          docker compose config --quiet
+          docker compose build --pull
+          docker compose up -d --wait --wait-timeout 180
+      - name: Seed and exercise frontend, API, versions, tenants and asynchronous imports
+        run: |
+          python scripts/seed.py --url http://127.0.0.1:8080
+          python scripts/docker_smoke.py --url http://127.0.0.1:8080
+          docker compose exec -T api python - <<'PYMETRICS'
+          import os
+          from pathlib import Path
+          from urllib.request import urlopen
+          folder = Path(os.environ['PROMETHEUS_MULTIPROC_DIR'])
+          assert len(list(folder.glob('counter_*.db'))) == 2
+          metrics = urlopen('http://127.0.0.1:8000/internal/metrics').read()
+          assert b'teamwiki_http_requests_total' in metrics
+          assert b'teamwiki_http_inflight 0.0' in metrics
+          PYMETRICS
+          docker compose exec -T redis-cache redis-cli CONFIG GET maxmemory-policy
+          docker compose exec -T redis-broker redis-cli CONFIG GET maxmemory-policy
+      - name: Container diagnostics
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --tail=150
+      - name: Tear down test containers and volumes
+        if: always()
+        run: docker compose down --volumes --remove-orphans

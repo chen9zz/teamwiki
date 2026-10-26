@@ -10,7 +10,7 @@ from app.models import Page, PageRevision
 from app.repositories.pages import compare_and_swap, find_page
 from app.schemas.pages import PageCreate, PageOut
 from app.services.identity import WRITERS, audit, lock_workspace, require_member
-from app.services.links import reconcile_workspace
+from app.services.links import reconcile_source, reconcile_workspace
 
 
 async def require_page(db, wid, pid, include_deleted=False):
@@ -33,8 +33,8 @@ async def get_page(db, wid, pid, user_id):
     if meta is None or meta.deleted_at is not None:
         raise HTTPException(404, "Page not found")
     key = cache.page_key(wid, pid, meta.version)
-    async with cache.fill_lock(key):
-        value = await cache.read(key)
+
+    def cached_page(value):
         if (
             isinstance(value, dict)
             and value.get("workspace_id") == wid
@@ -45,6 +45,16 @@ async def get_page(db, wid, pid, user_id):
                 return PageOut.model_validate(value)
             except ValueError:
                 pass
+        return None
+
+    # Warm hits do not queue behind singleflight locks. Only a cold fill serializes.
+    hit = cached_page(await cache.read(key))
+    if hit is not None:
+        return hit
+    async with cache.fill_lock(key):
+        hit = cached_page(await cache.read(key))
+        if hit is not None:
+            return hit
         page = await require_page(db, wid, pid)
         result = PageOut.model_validate(page)
         # If a writer committed after metadata read, cache under the fetched version.
@@ -115,10 +125,41 @@ async def create_page(db, wid, user_id, data):
     return await create_in_transaction(db, wid, user_id, data)
 
 
+def _version_conflict(page, submitted_version):
+    raise HTTPException(
+        409,
+        detail={
+            "code": "version_conflict",
+            "current": PageOut.model_validate(page).model_dump(mode="json"),
+            "submitted_version": submitted_version,
+        },
+    )
+
+
 async def mutate_page(db, wid, pid, user_id, version, values, action="page.update", include_deleted=False):
-    await lock_workspace(db, wid)
+    await require_member(db, wid, user_id, WRITERS)
+    preview = await require_page(db, wid, pid, include_deleted)
+    # The editor sends title even if unchanged. Classify by actual values, not
+    # field presence, so ordinary typing saves can overlap across documents.
+    structural = (
+        "deleted_at" in values
+        or "title" in values
+        and values["title"] != preview.title
+        or "parent_id" in values
+        and values["parent_id"] != preview.parent_id
+    )
+    await lock_workspace(db, wid, shared=not structural)
     await require_member(db, wid, user_id, WRITERS)
     page = await require_page(db, wid, pid, include_deleted)
+    if page.version != version:
+        _version_conflict(page, version)
+    # Never upgrade a shared lock in place: simultaneous upgrades can deadlock.
+    # If structure changed while acquiring a shared lock, require a fresh read.
+    if not structural and (
+        ("title" in values and values["title"] != page.title)
+        or ("parent_id" in values and values["parent_id"] != page.parent_id)
+    ):
+        _version_conflict(page, version)
     if "parent_id" in values:
         await _parent(db, wid, pid, values["parent_id"])
     if values.get("deleted_at"):
@@ -144,18 +185,14 @@ async def mutate_page(db, wid, pid, user_id, version, values, action="page.updat
     )
     if not changed:
         current = await require_page(db, wid, pid, include_deleted=True)
-        raise HTTPException(
-            409,
-            detail={
-                "code": "version_conflict",
-                "current": PageOut.model_validate(current).model_dump(mode="json"),
-                "submitted_version": version,
-            },
-        )
+        _version_conflict(current, version)
     page = await require_page(db, wid, pid, include_deleted=True)
     _snapshot(db, page, user_id)
     audit(db, wid, user_id, action, pid, {"version": page.version})
-    await reconcile_workspace(db, wid)
+    if structural:
+        await reconcile_workspace(db, wid)
+    else:
+        await reconcile_source(db, page)
     # Version namespacing guarantees correctness even if eviction runs before commit.
     await cache.invalidate(wid, pid, version)
     return page

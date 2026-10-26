@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "test:production": "npm run build && node scripts/smoke-production.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.3.4",

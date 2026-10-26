@@ -28,3 +28,15 @@ Status: complete
 - System Python is 3.9.6; use bundled Python 3.13 or downloaded runtime.
 - Docker is absent; prepare Compose and attempt native PostgreSQL/Redis validation.
 - Requested /path/to/teamwiki lies outside default writable roots: stage in task workspace, then copy using authorized escalation.
+
+
+## Phase4: Docker and concurrency hardening
+Status: complete
+- [x] Actual persistent Docker engine, image builds, full Compose startup and private network.
+- [x] Separate cache/broker Redis, bounded pools/deadlines/admission, multiprocess operational metrics.
+- [x] Shared ordinary-save locks, source-only link indexing, permission rechecks and preserved CAS.
+- [x]77 real PostgreSQL/Redis tests,13frontend tests, compiled production DOM regression, actual Docker browser acceptance.
+- [x] Matched baseline/after concurrency evidence with limitations; Docker fault/recovery and VM persistence verified.
+- [x] Source and documentation ready for canonical repository synchronization.
+
+Earlier Docker-absent constraint resolved in0.2.0: persistent task-local Docker-compatible engine and Compose now installed under ignored work/docker-runtime; no systemwide installation or security bypass.

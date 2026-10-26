@@ -1,4 +1,9 @@
-"""Authenticated, mixed read/search/write load. Expected stale writes count as success."""
+"""Exploratory mixed load against an explicitly chosen disposable workspace.
+
+Set LOAD_EMAIL, LOAD_PASSWORD and LOAD_WORKSPACE_ID. Every virtual user creates
+its own page; stale-write 409 responses have a separate request name and are
+expected. Use benchmark_concurrency.py for repeatable before/after evidence.
+"""
 
 import os
 import random
@@ -12,20 +17,25 @@ class WikiUser(HttpUser):
     wait_time = between(0.1, 0.5)
 
     def on_start(self):
+        email = os.getenv("LOAD_EMAIL")
+        password = os.getenv("LOAD_PASSWORD")
+        workspace_id = os.getenv("LOAD_WORKSPACE_ID")
+        if not all((email, password, workspace_id)):
+            raise StopUser("Set LOAD_EMAIL, LOAD_PASSWORD and LOAD_WORKSPACE_ID for a disposable workspace")
         response = self.client.post(
             "/api/auth/login",
             json={
-                "email": os.getenv("LOAD_EMAIL", "owner@teamwiki.dev"),
-                "password": os.getenv("LOAD_PASSWORD", "DemoPassword123!"),
+                "email": email,
+                "password": password,
             },
             name="auth/login",
         )
         if response.status_code != 200:
-            raise StopUser("Seed the demo account before load testing")
+            raise StopUser("Benchmark account could not sign in")
         workspaces = self.client.get("/api/workspaces", name="workspaces/list").json()
-        if not workspaces:
-            raise StopUser("No workspace")
-        self.wid = workspaces[0]["id"]
+        if workspace_id not in {workspace["id"] for workspace in workspaces}:
+            raise StopUser("LOAD_WORKSPACE_ID is not accessible to the benchmark account")
+        self.wid = workspace_id
         self.prefix = f"/api/workspaces/{self.wid}"
         self.pages = self.client.get(self.prefix + "/pages", name="pages/list").json()
         response = self.client.post(
@@ -59,7 +69,10 @@ class WikiUser(HttpUser):
     def save_and_conflict(self):
         page = self.own_page
         path = self.prefix + f"/pages/{page['id']}"
-        payload = {"version": page["version"], "content": f"# Load test\n\nEdit {uuid4().hex}"}
+        payload = {
+            "version": page["version"],
+            "content": f"# Load test\n\nEdit {uuid4().hex}",
+        }
         response = self.client.patch(path, json=payload, name="pages/save")
         if response.status_code == 200:
             self.own_page = response.json()

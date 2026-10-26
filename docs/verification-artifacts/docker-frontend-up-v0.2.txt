@@ -1,0 +1,6 @@
+ Container teamwiki-frontend-1 Recreate
+ Container teamwiki-frontend-1 Recreated
+ Container teamwiki-frontend-1 Starting
+ Container teamwiki-frontend-1 Started
+ Container teamwiki-frontend-1 Waiting
+ Container teamwiki-frontend-1 Healthy

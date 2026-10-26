@@ -7,11 +7,12 @@ flowchart LR
   Browser[React / CodeMirror / Markdown] --> Nginx[Nginx 同源代理]
   Nginx --> API[FastAPI API]
   API --> PG[(PostgreSQL 17)]
-  API -. 版本缓存 .-> Redis[(Redis 7)]
+  API -. 版本缓存 .-> Cache[(Redis Cache / LRU)]
+  API --> Metrics[Private Prometheus metrics]
   Beat[Celery Beat] --> Dispatcher[Outbox Dispatcher]
   Dispatcher --> PG
-  Dispatcher --> Redis
-  Redis --> Worker[Celery Worker]
+  Dispatcher --> Broker[(Redis Broker / AOF / noeviction)]
+  Broker --> Worker[Celery Worker]
   Worker --> PG
 ```
 
@@ -25,7 +26,7 @@ flowchart LR
 
 页面携带从 1 开始的 `version`。更新、删除、恢复和历史回滚均使用条件更新 `WHERE id = ? AND workspace_id = ? AND version = ?`；只有一个请求能将同一版本更新成功。失败返回 409，并附当前页面和提交版本。成功操作在同一个事务内写入完整修订快照、审计事件和链接索引。
 
-页面树调整和链接解析还会锁住空间行，确保循环检测和链接更新观察到一致的空间状态。锁是空间粒度，因此一个空间的大量并发写入会串行化；这是本项目为清晰一致性作出的取舍。
+普通正文及标签保存持有空间共享行锁，不同页面可以并行；创建、实际重命名、移动、删除、恢复及权限变更持有排他行锁。锁后重新检查成员权限，并按页面版本执行原子条件更新。普通保存只替换当前来源的链接，不解析其他页面正文；结构变更及批量导入仍全量校正，保持同步强一致性。详见 [并发方案](concurrency.md)。
 
 ## 链接与搜索
 

@@ -61,6 +61,9 @@ async def client(session_factory):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
         yield client
     app.dependency_overrides.clear()
+    from app.core.cache import close_cache
+
+    await close_cache()
 
 
 async def register(client, email="owner@example.com", name="Owner"):

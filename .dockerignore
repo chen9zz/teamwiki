@@ -1,11 +1,12 @@
 .git
 .venv
 .env
+.env.*
+!.env.example
 work
+outputs
 **/node_modules
 **/dist
 **/__pycache__
 **/.pytest_cache
 **/.ruff_cache
-outputs
-

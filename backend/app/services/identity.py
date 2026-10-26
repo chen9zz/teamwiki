@@ -43,8 +43,15 @@ async def require_member(
     return member
 
 
-async def lock_workspace(db: AsyncSession, workspace_id: str) -> Workspace:
-    workspace = await db.scalar(select(Workspace).where(Workspace.id == workspace_id).with_for_update())
+async def lock_workspace(db: AsyncSession, workspace_id: str, *, shared: bool = False) -> Workspace:
+    """Shared for ordinary saves; exclusive for membership/tree/target-identity changes.
+
+    Holding either lock until transaction end prevents permission revocation and
+    structural changes from interleaving with an authorized page mutation.
+    """
+    workspace = await db.scalar(
+        select(Workspace).where(Workspace.id == workspace_id).with_for_update(read=shared)
+    )
     if workspace is None:
         raise HTTPException(404, "Workspace not found")
     return workspace

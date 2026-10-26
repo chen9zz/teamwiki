@@ -51,6 +51,8 @@ cd backend
 
 前端在 `frontend/` 运行 `npm ci && npm run dev`，打开 <http://localhost:5173>。Vite 将 `/api` 转到本机 8000。环境变量属于各自终端，不会自动继承到新终端。
 
+默认连接池、超时、过载响应和私有指标见 [Docker 运维配置](docker.md)；本机已配置的便携 Docker 启动方法也见该文档。
+
 ## 数据库迁移与备份
 
 应用只使用迁移后的模式。升级前备份数据库，运行 `alembic upgrade head`；不要让多个实例同时执行迁移。迁移回退会删除相应结构，初始迁移 `downgrade base` 会清空全部业务表，仅适用于可丢弃测试库。

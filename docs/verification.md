@@ -1,8 +1,10 @@
 # 验证记录
 
+首版记录保留如下；0.2.0 升级及本次 Docker、并发验证见文末。
+
 记录日期：2026-10-26。以下是本次实际执行的结果；硬件、数据规模和运行方式仅代表当前本机开发环境。
 
-## 真实基础服务
+## 首版原生基础服务（0.1）
 
 - macOS arm64；Python 3.12 虚拟环境。
 - PostgreSQL 17.11：从 PostgreSQL 官方源码编译到项目 `work/runtime/pgsql`，数据也在项目 `work/` 中；仅监听 `127.0.0.1:55432`。初始化所需共享内存权限通过自动权限审核后正常创建。
@@ -104,9 +106,9 @@ Bitmap Heap Scan on pages
 
 最终代码完成后已重启 API、Worker 和 Beat，确认 SQLAlchemy 2.0.55；`/api/ready` 返回数据库和缓存均 ok，重启后的 Worker 通过真实 broker 再次消费已完成 Job 后仍返回 completed。`/api/docs`、`/api/redoc` 和 `/api/openapi.json` 均可通过同源 `/api` 路径访问；[OpenAPI 快照](openapi.json) 从该最终服务导出，包含 25 个路径。
 
-## 尚未在本机执行
+## 首版验证边界与后续状态
 
-- Docker / Compose 镜像构建与容器联调。
+- 首版未执行的 Docker / Compose 镜像构建与容器联调，已在0.2升级中完成。
 - 生产 TLS、跨主机负载、持久化存储故障和长期容量测试。
 - GitHub Actions 的远程执行；CI 配置已提交为可运行工作流，远程结果需由仓库运行确认。
 
@@ -124,3 +126,29 @@ Node 26 本机执行 `npm run typecheck`、`npm test`、`npm run build` 均成�
 ![真实双窗口冲突](assets/conflict.png)
 
 最终复核：在backend目录按CI方式运行，44项通过（3.42秒）；前端13项通过（5文件），tsc类型检查与Vite生产构建通过。SQLAlchemy2.0.55下再次在独立迁移校验库执行downgrade base→upgrade head通过。Ruff和compileall通过，pip check未发现依赖冲突。
+
+
+## 0.2.0 Docker 与并发升级（2026-10-26）
+
+本次从干净0abea29基线开发，完整 PostgreSQL/Redis 后端回归为77项通过，Ruff检查通过。新增范围包括共享/排他工作区锁、单来源链接索引、权限撤销竞态、连接池等待、慢SQL与锁超时、过载503、原生数据库连接拒绝503、Redis连接复用/生命周期/无响应、并发冷缓存合并、热缓存绕过填充锁、两进程指标聚合和基准统计校验。
+
+实际 Docker Engine、Compose和持久化VM完成后端/前端镜像构建、完整栈启动与迁移、真实Worker/Beat异步导入、版本冲突、跨租户拒绝、缓存中断降级、队列重启后的排队任务恢复。指标在两个API进程间聚合，入口不公开内部指标；Nginx认证限流产生429，后端非root运行。远程GitHub Actions尚未执行，新CI容器任务已按同一套本机已执行命令配置。
+
+同条件短测：100篇248字节初始正文、每页一条链接，16请求流，2API进程，池5+10，读/写分别10秒。不同文档保存136.390→764.940请求/秒，P95 138.778→32.144毫秒；读取738.892→753.711请求/秒。两边均5个热点胜者、75个预期409，修订连续。部署默认池为5+5，与刻意匹配旧默认的基准池不同。数据规模、时长、同机闭环负载限制和原始JSON详见 [并发验证](concurrency.md)。
+
+独立审查发现数据库连接建立可能直接抛出ConnectionRefusedError，容器停止时还可能抛出socket.gaierror，绕过原SQLAlchemy异常分类而返回500。已用真实关闭端口复现，并补齐仅针对网络连接/建立超时的503处理；本地文件错误与SQL编程错误不被伪装成容量问题。
+
+
+最终在0.2.0容器实际停止PostgreSQL，readiness与连续三个已认证业务请求均返回503，携带Retry-After:1；重启后就绪和业务读取恢复200。持久VM迁移保留已有账户、样例空间和导入任务。脱敏观测记录见 [Docker升级证据](verification-artifacts/docker-v0.2.json)。
+
+最终本机复核：真实PostgreSQL/Redis套件77项通过（4.88秒），前端13项测试、类型检查与生产构建通过，独立迁移校验库upgrade/downgrade/upgrade通过。部署无新数据库字段，沿用显式0001迁移。
+
+
+容器正式构建的浏览器验收暴露出首版手工Rolldown分块造成的循环导入，打开文档时出现`u is not a function`。已删除强制分组，保留默认懒加载；新增直接执行编译入口、文档模块、真实CodeMirror和预览的DOM回归，先复现失败再验证修复。Docker Node22镜像构建和CI均运行`npm run test:production`。默认编辑器分块约618KB的大小提示保留，优先保证产物执行正确，尚未据此声称首屏或网络加载已优化。
+
+修复后的真实Docker浏览器已通过Owner登录、阅读、新建子文档、编辑、保存v1→v2、Markdown预览、Wiki链接和5节点5边图谱验收。完整容器使用独立数据库卷，原生开发数据库未修改。
+
+![容器正式构建验收](assets/docker-v0.2.png)
+
+
+0.2依赖锁新增prometheus-client0.26.0：运行依赖55个，运行及开发依赖90个，SQLAlchemy仍固定2.0.55。当前未验证AMD64镜像和远程GitHub Actions；生产TLS、跨主机故障与长期容量验证仍需在目标环境完成。

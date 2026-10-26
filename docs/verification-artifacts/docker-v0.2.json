@@ -1,0 +1,153 @@
+{
+  "date": "2026-10-26",
+  "result": "passed",
+  "openapi_version": "0.2.0",
+  "platform": "linux/arm64 on macOS VZ",
+  "engine_version": "29.5.2",
+  "compose_version": "5.6.1",
+  "smoke": {
+    "result": "passed",
+    "frontend": true,
+    "readiness": {
+      "database": "ok",
+      "cache": "ok"
+    },
+    "versions": true,
+    "tenant_isolation": true,
+    "worker_and_beat_import": true,
+    "workspace_id": "136e14fd-3969-4251-8c81-4e9502263178",
+    "job_id": "cf2ffa6f-96af-40f7-b64c-c1d4d862c0f3"
+  },
+  "database_outage": {
+    "readiness": {
+      "status": 503,
+      "seconds": 0.004,
+      "retry_after": "1",
+      "body": {
+        "database": "unavailable",
+        "cache": "unknown"
+      }
+    },
+    "protected_page_lists": [
+      {
+        "status": 503,
+        "seconds": 0.002,
+        "retry_after": "1",
+        "body": {
+          "detail": {
+            "code": "temporarily_unavailable",
+            "message": "Service busy; retry shortly."
+          }
+        }
+      },
+      {
+        "status": 503,
+        "seconds": 0.002,
+        "retry_after": "1",
+        "body": {
+          "detail": {
+            "code": "temporarily_unavailable",
+            "message": "Service busy; retry shortly."
+          }
+        }
+      },
+      {
+        "status": 503,
+        "seconds": 0.002,
+        "retry_after": "1",
+        "body": {
+          "detail": {
+            "code": "temporarily_unavailable",
+            "message": "Service busy; retry shortly."
+          }
+        }
+      }
+    ]
+  },
+  "database_recovered": {
+    "status": 200,
+    "seconds": 0.015,
+    "retry_after": null,
+    "body": {
+      "database": "ok",
+      "cache": "ok"
+    }
+  },
+  "protected_page_list_recovered": true,
+  "metrics": {
+    "worker_counter_files": [
+      "counter_11.db",
+      "counter_12.db"
+    ],
+    "worker_post_counts": [
+      8.0,
+      0
+    ],
+    "aggregated_post_count": 8.0,
+    "inflight": 0,
+    "concurrent_page_read_probe": 40,
+    "worker_page_read_counts": [
+      21.0,
+      23.0
+    ],
+    "aggregated_page_read_count": 44.0
+  },
+  "persistence": {
+    "vm_directory": "/path/to/teamwiki/work/docker-runtime/lima",
+    "actual_directory_not_symlink": true,
+    "owner_uid": 501,
+    "env_mode": "0o600",
+    "pre_move_import_retained": "7822e157-e5ce-4009-8ff2-cf0478e2376f"
+  },
+  "network_internal": true,
+  "cache_policy": "allkeys-lru",
+  "broker_policy": "noeviction",
+  "broker_aof": "yes",
+  "remote_github_actions_executed": false,
+  "openapi_path_count": 25,
+  "postgresql_version": "17.11",
+  "build_and_startup": {
+    "build_exit_code": 0,
+    "compose_wait_exit_code": 0,
+    "build_log": "docker-build-v0.2.txt",
+    "startup_log": "docker-up-v0.2.txt"
+  },
+  "frontend_bundler_fix": {
+    "frontend_rebuild_exit_code": 0,
+    "frontend_recreate_wait_exit_code": 0,
+    "served_entry_assets": [
+      "/assets/index-DPQlYV91.js",
+      "/assets/jsx-runtime-Wy9s6hX0.js",
+      "/assets/index-DdxtMHhU.css"
+    ],
+    "built_assets": [
+      "GraphView-ARVy2Vrv.js",
+      "MarkdownEditor-Eha6RfdT.js",
+      "PageEditor-B3hnh1pC.js",
+      "index-DPQlYV91.js",
+      "index-DdxtMHhU.css",
+      "jsx-runtime-Wy9s6hX0.js"
+    ],
+    "readiness": {
+      "database": "ok",
+      "cache": "ok"
+    },
+    "browser_validation": "passed: actual Docker browser document/read/create/CodeMirror/save/preview/wiki links/graph",
+    "production_dom_regression": "passed inside Node22 Alpine Docker build",
+    "regression_flow": "compiled document → real CodeMirror → Markdown preview (API boundary stubbed)"
+  },
+  "browser_validation": {
+    "result": "passed",
+    "origin": "http://127.0.0.1:8080",
+    "flows": [
+      "owner login",
+      "read Markdown document",
+      "create child page",
+      "real CodeMirror input",
+      "save version1 to2",
+      "Markdown preview and wiki link",
+      "knowledge graph5nodes5edges"
+    ],
+    "page_id": "c88368ac-983f-490a-bff3-2417759de8f9"
+  }
+}

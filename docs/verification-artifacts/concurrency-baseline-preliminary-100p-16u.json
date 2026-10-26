@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "timestamp_utc": "2026-10-26T04:40:57.218697+00:00",
+  "label": "baseline",
+  "base_url": "http://127.0.0.1:8011",
+  "load_generator": {
+    "python": "3.12.14",
+    "httpx": "0.28.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "mode": "closed_loop_no_think_time"
+  },
+  "declared_server": {
+    "api_workers": 2,
+    "db_pool_size_per_worker": 5,
+    "db_max_overflow_per_worker": 10,
+    "notes": "Unmodified canonical /path/to/teamwiki/backend; native PostgreSQL 17.11 port 55432, Redis 7.4.7 port 56379 database 3; no proxy/Celery; same host client and server."
+  },
+  "fixture": {
+    "workspace_id": "5541d496-2e3b-4a35-820c-412a82e4b12d",
+    "pages": 100,
+    "document_bytes_initial": 248,
+    "links_per_page": 1,
+    "created_via_public_api": true,
+    "seed_seconds": 0.64
+  },
+  "parameters": {
+    "concurrent_streams": 16,
+    "steady_seconds_per_scenario": 10.0,
+    "hot_batches": 5,
+    "request_timeout_seconds": 30,
+    "cache": "reads warmed for every page; writes invalidate their previous version",
+    "authentication": "fresh owner session established before timing"
+  },
+  "results": [
+    {
+      "requests": 6745,
+      "elapsed_seconds": 10.0148,
+      "rps": 673.503,
+      "successful_rps": 673.503,
+      "status_counts": {
+        "200": 6745
+      },
+      "unexpected_requests": 0,
+      "latency_ms": {
+        "p50": 10.79,
+        "p95": 78.906,
+        "p99": 139.743,
+        "max": 370.635
+      },
+      "scenario": "many_page_reads",
+      "error_examples": [],
+      "verification": [],
+      "passed": true
+    },
+    {
+      "requests": 1139,
+      "elapsed_seconds": 10.1493,
+      "rps": 112.224,
+      "successful_rps": 112.224,
+      "status_counts": {
+        "200": 1139
+      },
+      "unexpected_requests": 0,
+      "latency_ms": {
+        "p50": 142.926,
+        "p95": 165.809,
+        "p99": 173.449,
+        "max": 180.652
+      },
+      "scenario": "different_page_writes",
+      "error_examples": [],
+      "verification": [
+        {
+          "page_id": "9a4cdae3-dd88-4635-9f0c-f579ab45cc82",
+          "expected_version": 73,
+          "actual_version": 73,
+          "revision_count": 73,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "5fe10ff1-931f-49f1-aad6-3b77e8a554d7",
+          "expected_version": 73,
+          "actual_version": 73,
+          "revision_count": 73,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "d54031be-101f-44bc-8871-8a82400ef3e3",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "1569038e-a771-470c-b1c6-5e3ee64bff6b",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "8f670cec-d4b1-49f1-b526-3ff4525584bd",
+          "expected_version": 73,
+          "actual_version": 73,
+          "revision_count": 73,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "db1df157-3689-49c9-b024-6bd4e8f0a4f4",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "b0971904-c835-4229-836a-0b0a38ecf3dd",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "d7b905fd-55ac-4215-9281-d2967004bf72",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "3c073b2f-0592-4923-8bcc-6995d4da6101",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "1cb8e69f-2dbf-4fba-bb24-073aff5f6933",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "dcd92e05-ebb9-46c4-8657-7a4c90425077",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "85ace2e3-2b9b-4f52-a0fa-1b12a6c8e2ba",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "305489b3-a40d-4a40-93c9-d5307dc947ed",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "223cd32e-3ad6-4155-ba1e-03dc995d6881",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "537cc6c5-7b5a-465e-91b9-4a709e8ca5d3",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "4f0e4732-e84b-4ba0-abf5-22d44717caf0",
+          "expected_version": 72,
+          "actual_version": 72,
+          "revision_count": 72,
+          "contiguous_history": true
+        }
+      ],
+      "passed": true
+    },
+    {
+      "requests": 80,
+      "elapsed_seconds": 0.1981,
+      "rps": 403.878,
+      "successful_rps": 403.878,
+      "status_counts": {
+        "200": 5,
+        "409": 75
+      },
+      "unexpected_requests": 0,
+      "latency_ms": {
+        "p50": 25.153,
+        "p95": 35.895,
+        "p99": 37.155,
+        "max": 37.291
+      },
+      "scenario": "hot_page_compare_and_swap",
+      "batches": [
+        {
+          "submitted_version": 1,
+          "status_counts": {
+            "409": 15,
+            "200": 1
+          },
+          "exactly_one_winner": true
+        },
+        {
+          "submitted_version": 2,
+          "status_counts": {
+            "409": 15,
+            "200": 1
+          },
+          "exactly_one_winner": true
+        },
+        {
+          "submitted_version": 3,
+          "status_counts": {
+            "409": 15,
+            "200": 1
+          },
+          "exactly_one_winner": true
+        },
+        {
+          "submitted_version": 4,
+          "status_counts": {
+            "409": 15,
+            "200": 1
+          },
+          "exactly_one_winner": true
+        },
+        {
+          "submitted_version": 5,
+          "status_counts": {
+            "409": 15,
+            "200": 1
+          },
+          "exactly_one_winner": true
+        }
+      ],
+      "verification": {
+        "page_id": "9f24c2b1-e463-42f5-bbb6-1aa6062c825a",
+        "expected_version": 6,
+        "actual_version": 6,
+        "revision_count": 6,
+        "contiguous_history": true
+      },
+      "passed": true
+    }
+  ],
+  "passed": true
+}

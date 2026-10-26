@@ -1,22 +1,37 @@
 name: teamwiki
 x-backend: &backend
   build: ./backend
+  image: teamwiki-backend:local
   env_file: .env
   restart: unless-stopped
+  init: true
+  networks: [backend]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  pids_limit: 192
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
   depends_on:
     migrate:
       condition: service_completed_successfully
-    redis:
+    redis-broker:
       condition: service_healthy
 
 services:
   postgres:
-    image: postgres:17
+    image: postgres:17-alpine
     restart: unless-stopped
+    networks: [backend]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-teamwiki}
       POSTGRES_USER: ${POSTGRES_USER:-teamwiki}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    command: ["postgres", "-c", "max_connections=80", "-c", "shared_buffers=128MB"]
+    mem_limit: 768m
+    cpus: 1.5
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -25,12 +40,28 @@ services:
       timeout: 3s
       retries: 20
 
-  redis:
+  redis-cache:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    networks: [backend]
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    mem_limit: 192m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis-broker:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [backend]
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "192mb", "--maxmemory-policy", "noeviction"]
+    mem_limit: 384m
+    cpus: 0.5
     volumes:
-      - redis_data:/data
+      - redis_broker_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -39,8 +70,12 @@ services:
 
   migrate:
     build: ./backend
+    image: teamwiki-backend:local
     env_file: .env
     restart: "no"
+    networks: [backend]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
     command: ["alembic", "upgrade", "head"]
     depends_on:
       postgres:
@@ -48,18 +83,34 @@ services:
 
   api:
     <<: *backend
+    environment:
+      PROMETHEUS_MULTIPROC_DIR: /tmp/teamwiki-metrics
+    mem_limit: 768m
+    cpus: 2
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=2)"]
       interval: 10s
       timeout: 3s
       retries: 15
+      start_period: 15s
 
   worker:
     <<: *backend
-    command: ["celery", "-A", "app.tasks.worker:celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    mem_limit: 768m
+    cpus: 1.5
+    command: ["sh", "-c", "exec celery -A app.tasks.worker:celery_app worker --loglevel=INFO --concurrency=$${WORKER_CONCURRENCY:-2} --max-tasks-per-child=100"]
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.tasks.worker:celery_app inspect ping --destination celery@$$HOSTNAME --timeout 3 | grep -q pong"]
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 20s
 
+  # Run exactly one beat instance: duplicate schedulers publish redundant messages.
   beat:
     <<: *backend
+    mem_limit: 256m
+    cpus: 0.5
     command: ["celery", "-A", "app.tasks.worker:celery_app", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
 
   frontend:
@@ -67,13 +118,25 @@ services:
       context: .
       dockerfile: infra/frontend.Dockerfile
     restart: unless-stopped
+    networks: [edge, backend]
+    mem_limit: 128m
+    cpus: 0.5
     ports:
       - "127.0.0.1:${PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     depends_on:
       api:
         condition: service_healthy
 
+networks:
+  edge:
+  backend:
+    internal: true
+
 volumes:
   postgres_data:
-  redis_data:
-
+  redis_broker_data:

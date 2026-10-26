@@ -82,45 +82,96 @@ def parse_wiki_links(content: str) -> list[str]:
     return targets
 
 
+def _target_catalog(pages):
+    by_id = {page.id: page for page in pages}
+    by_title = defaultdict(list)
+    for page in pages:
+        if page.deleted_at is None:
+            by_title[page.title.strip().casefold()].append(page)
+    return by_id, by_title
+
+
+def _source_links(page, old_links, by_id, by_title):
+    from app.models import PageLink
+
+    previous = {link.raw_target: link.target_id for link in old_links if link.target_id}
+    for raw in parse_wiki_links(page.content):
+        target = by_id.get(previous.get(raw))
+        if target is None:
+            if raw.startswith("id:"):
+                target = by_id.get(raw[3:])
+                matches = [target] if target else []
+            else:
+                matches = by_title.get(raw.casefold(), [])
+                target = matches[0] if len(matches) == 1 else None
+            state = "ambiguous" if len(matches) > 1 else "unresolved"
+        else:
+            state = "resolved"
+        if target:
+            state = "deleted" if target.deleted_at else "resolved"
+        yield PageLink(
+            workspace_id=page.workspace_id,
+            source_id=page.id,
+            target_id=target.id if target else None,
+            raw_target=raw,
+            state=state,
+            source_version=page.version,
+        )
+
+
+async def reconcile_source(db, page) -> None:
+    """Index only the edited source under a shared workspace lock.
+
+    Catalog reads omit other Markdown bodies. Structural writes require an
+    exclusive workspace lock, so title/target state remains stable until commit.
+    Independent sources never delete or recreate each other's relationship rows.
+    """
+    from sqlalchemy import delete, select
+
+    from app.models import Page, PageLink
+
+    targets = (
+        await db.execute(
+            select(Page.id, Page.title, Page.deleted_at).where(
+                Page.workspace_id == page.workspace_id,
+            )
+        )
+    ).all()
+    by_id, by_title = _target_catalog(targets)
+    old_links = list(
+        (
+            await db.scalars(
+                select(PageLink).where(
+                    PageLink.workspace_id == page.workspace_id,
+                    PageLink.source_id == page.id,
+                )
+            )
+        ).all()
+    )
+    await db.execute(
+        delete(PageLink).where(
+            PageLink.workspace_id == page.workspace_id,
+            PageLink.source_id == page.id,
+        )
+    )
+    db.add_all(list(_source_links(page, old_links, by_id, by_title)))
+    await db.flush()
+
+
 async def reconcile_workspace(db, workspace_id: str) -> None:
-    """Caller must hold the workspace row lock; index writes share its transaction."""
+    """Structural/bulk reconciliation only; caller holds exclusive workspace lock."""
     from sqlalchemy import delete, select
 
     from app.models import Page, PageLink
 
     pages = list((await db.scalars(select(Page).where(Page.workspace_id == workspace_id))).all())
     old_links = list((await db.scalars(select(PageLink).where(PageLink.workspace_id == workspace_id))).all())
-    by_id = {page.id: page for page in pages}
-    by_title = defaultdict(list)
-    for page in pages:
-        if page.deleted_at is None:
-            by_title[page.title.strip().casefold()].append(page)
-    previous = {(link.source_id, link.raw_target): link.target_id for link in old_links if link.target_id}
+    by_id, by_title = _target_catalog(pages)
+    by_source = defaultdict(list)
+    for link in old_links:
+        by_source[link.source_id].append(link)
     await db.execute(delete(PageLink).where(PageLink.workspace_id == workspace_id))
-    # Keep deleted sources' identity bindings so undelete can recover their links.
+    # Deleted sources retain their identity bindings for later undelete.
     for page in pages:
-        for raw in parse_wiki_links(page.content):
-            target = by_id.get(previous.get((page.id, raw)))
-            if target is None:
-                if raw.startswith("id:"):
-                    target = by_id.get(raw[3:])
-                    matches = [target] if target else []
-                else:
-                    matches = by_title.get(raw.casefold(), [])
-                    target = matches[0] if len(matches) == 1 else None
-                state = "ambiguous" if len(matches) > 1 else "unresolved"
-            else:
-                state = "resolved"
-            if target:
-                state = "deleted" if target.deleted_at else "resolved"
-            db.add(
-                PageLink(
-                    workspace_id=workspace_id,
-                    source_id=page.id,
-                    target_id=target.id if target else None,
-                    raw_target=raw,
-                    state=state,
-                    source_version=page.version,
-                )
-            )
+        db.add_all(list(_source_links(page, by_source[page.id], by_id, by_title)))
     await db.flush()

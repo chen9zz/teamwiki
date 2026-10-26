@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "timestamp_utc": "2026-10-26T04:47:39.619098+00:00",
+  "label": "after-final",
+  "base_url": "http://127.0.0.1:8012",
+  "load_generator": {
+    "python": "3.12.14",
+    "httpx": "0.28.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "mode": "closed_loop_no_think_time"
+  },
+  "declared_server": {
+    "api_workers": 2,
+    "db_pool_size_per_worker": 5,
+    "db_max_overflow_per_worker": 10,
+    "notes": "Upgrade worktree backend; native PostgreSQL17.11 port55432, Redis7.4.7 port56379 DB4; no proxy/Celery; same host client/server; Docker build and active smoke complete before pair, containers idle except health/beat. Both benchmark DBs freshly migrated before this pair. Unchanged title plus content save payload; final runtime with metrics enabled."
+  },
+  "fixture": {
+    "workspace_id": "b12e19f5-9c4f-4639-955d-a963d58a0ae1",
+    "pages": 100,
+    "document_bytes_initial": 248,
+    "links_per_page": 1,
+    "created_via_public_api": true,
+    "seed_seconds": 0.599
+  },
+  "parameters": {
+    "concurrent_streams": 16,
+    "steady_seconds_per_scenario": 10.0,
+    "hot_batches": 5,
+    "request_timeout_seconds": 30,
+    "cache": "reads warmed for every page; writes invalidate their previous version",
+    "authentication": "fresh owner session established before timing"
+  },
+  "results": [
+    {
+      "requests": 7545,
+      "elapsed_seconds": 10.0105,
+      "rps": 753.711,
+      "successful_rps": 753.711,
+      "status_counts": {
+        "200": 7545
+      },
+      "unexpected_requests": 0,
+      "latency_ms": {
+        "p50": 8.964,
+        "p95": 70.733,
+        "p99": 114.962,
+        "max": 209.184
+      },
+      "scenario": "many_page_reads",
+      "error_examples": [],
+      "verification": [],
+      "passed": true
+    },
+    {
+      "requests": 7658,
+      "elapsed_seconds": 10.0112,
+      "rps": 764.94,
+      "successful_rps": 764.94,
+      "status_counts": {
+        "200": 7658
+      },
+      "unexpected_requests": 0,
+      "latency_ms": {
+        "p50": 19.55,
+        "p95": 32.144,
+        "p99": 45.791,
+        "max": 114.494
+      },
+      "scenario": "different_page_writes",
+      "error_examples": [],
+      "verification": [
+        {
+          "page_id": "e7aa6de0-7d1e-484f-9521-f7373f44ec31",
+          "expected_version": 509,
+          "actual_version": 509,
+          "revision_count": 509,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "40753225-f9d9-4663-9b1a-d3b041d9e260",
+          "expected_version": 481,
+          "actual_version": 481,
+          "revision_count": 481,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "1efe36e6-ba8f-44d5-b225-14c56ec064f7",
+          "expected_version": 477,
+          "actual_version": 477,
+          "revision_count": 477,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "953733d6-7448-44aa-9e27-d9cee84595b6",
+          "expected_version": 487,
+          "actual_version": 487,
+          "revision_count": 487,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "5a891c51-2c21-4e6f-a08d-d4853e77c2ab",
+          "expected_version": 480,
+          "actual_version": 480,
+          "revision_count": 480,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "4113efa8-46ed-4dbf-9c3c-a091f3750723",
+          "expected_version": 473,
+          "actual_version": 473,
+          "revision_count": 473,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "e399ac3d-3cb1-44e1-9733-3ff1362b89a5",
+          "expected_version": 472,
+          "actual_version": 472,
+          "revision_count": 472,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "e7d12c02-3517-46f9-9c0d-b63e9b05bdf4",
+          "expected_version": 482,
+          "actual_version": 482,
+          "revision_count": 482,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "6d412b2a-ba95-4210-a36c-01f5151cbc44",
+          "expected_version": 482,
+          "actual_version": 482,
+          "revision_count": 482,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "7c264dd6-daba-457e-a042-df1cee435dbe",
+          "expected_version": 475,
+          "actual_version": 475,
+          "revision_count": 475,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "34b56235-f87f-4ed0-b5fb-2a0c9fac8f56",
+          "expected_version": 472,
+          "actual_version": 472,
+          "revision_count": 472,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "b6048d37-123e-498a-ba59-9fc3c9cc2ff5",
+          "expected_version": 475,
+          "actual_version": 475,
+          "revision_count": 475,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "c41f2649-e724-4881-a7a8-77b07106733a",
+          "expected_version": 482,
+          "actual_version": 482,
+          "revision_count": 482,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "8a3bd05c-a61a-4591-b223-e83e26773fbf",
+          "expected_version": 479,
+          "actual_version": 479,
+          "revision_count": 479,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "b1fe064b-0b3a-4b04-8b3b-b9af3f063df3",
+          "expected_version": 485,
+          "actual_version": 485,
+          "revision_count": 485,
+          "contiguous_history": true
+        },
+        {
+          "page_id": "43740114-a2be-48e1-84af-5ab1bd9b7c8e",
+          "expected_version": 463,
+          "actual_version": 463,
+          "revision_count": 463,
+          "contiguous_history": true
+        }
+      ],
+      "passed": true
+    },
+    {
+      "requests": 80,
+      "elapsed_seconds": 0.1574,
+      "rps": 508.392,
+      "successful_rps": 508.392,
+      "status_counts": {
+        "200": 5,
+        "409": 75
+      },
+      "unexpected_requests": 0,
+      "latency_ms": {
+        "p50": 20.811,
+        "p95": 28.424,
+        "p99": 30.77,
+        "max": 31.856
+      },
+      "scenario": "hot_page_compare_and_swap",
+      "batches": [
+        {
+          "submitted_version": 1,
+          "status_counts": {
+            "409": 15,
+            "200": 1
+          },
+          "exactly_one_winner": true
+        },
+        {
+          "submitted_version": 2,
+          "status_counts": {
+            "409": 15,
+            "200": 1
+          },
+          "exactly_one_winner": true
+        },
+        {
+          "submitted_version": 3,
+          "status_counts": {
+            "409": 15,
+            "200": 1
+          },
+          "exactly_one_winner": true
+        },
+        {
+          "submitted_version": 4,
+          "status_counts": {
+            "409": 15,
+            "200": 1
+          },
+          "exactly_one_winner": true
+        },
+        {
+          "submitted_version": 5,
+          "status_counts": {
+            "409": 15,
+            "200": 1
+          },
+          "exactly_one_winner": true
+        }
+      ],
+      "verification": {
+        "page_id": "cfb17a33-b790-4830-9323-1313791b56dd",
+        "expected_version": 6,
+        "actual_version": 6,
+        "revision_count": 6,
+        "contiguous_history": true
+      },
+      "passed": true
+    }
+  ],
+  "passed": true
+}

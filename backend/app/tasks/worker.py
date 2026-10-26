@@ -6,6 +6,7 @@ import logging
 from celery import Celery
 from fastapi import HTTPException
 
+from app.core.cache import close_cache
 from app.core.config import settings
 from app.db.session import SessionLocal, engine
 from app.services.imports import (
@@ -17,6 +18,15 @@ from app.services.imports import (
 
 logger = logging.getLogger(__name__)
 MAX_ATTEMPTS = 3
+
+
+async def _close_runtime():
+    try:
+        await close_cache()
+    finally:
+        await engine.dispose()
+
+
 celery_app = Celery("teamwiki", broker=settings.celery_broker_url, backend=settings.celery_result_backend)
 celery_app.conf.update(
     task_serializer="json",
@@ -52,7 +62,7 @@ async def _execute(job_id: str):
             return {"id": job.id, "status": job.status}
     finally:
         # Celery uses a fresh loop per call. Never reuse asyncpg pools across loops.
-        await engine.dispose()
+        await _close_runtime()
 
 
 async def _record_failure(job_id: str, error: Exception, terminal: bool):
@@ -61,7 +71,7 @@ async def _record_failure(job_id: str, error: Exception, terminal: bool):
             job = await record_import_failure(db, job_id, error, terminal=terminal)
             return job.status if job is not None else "missing"
     finally:
-        await engine.dispose()
+        await _close_runtime()
 
 
 @celery_app.task(
@@ -100,7 +110,7 @@ async def _dispatch():
         async with SessionLocal.begin() as db:
             return await dispatch_outbox(db, _publish)
     finally:
-        await engine.dispose()
+        await _close_runtime()
 
 
 async def _recover():
@@ -108,7 +118,7 @@ async def _recover():
         async with SessionLocal.begin() as db:
             return await recover_stale_jobs(db)
     finally:
-        await engine.dispose()
+        await _close_runtime()
 
 
 @celery_app.task(name="teamwiki.dispatch_outbox")

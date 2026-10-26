@@ -1,0 +1,193 @@
+ Image teamwiki-backend:local Building
+ Image teamwiki-frontend Building
+ Image teamwiki-backend:local Building
+ Image teamwiki-backend:local Building
+ Image teamwiki-backend:local Building
+#1 [internal] load local bake definitions
+#1 reading from stdin 3.02kB done
+#1 DONE 0.0s
+
+#2 [frontend internal] load build definition from frontend.Dockerfile
+#2 transferring dockerfile: 370B done
+#2 DONE 0.0s
+
+#3 [migrate internal] load build definition from Dockerfile
+#3 transferring dockerfile: 469B done
+#3 DONE 0.0s
+
+#4 [beat internal] load metadata for docker.io/library/python:3.12-slim
+#4 DONE 0.8s
+
+#5 [frontend internal] load metadata for docker.io/library/nginx:stable-alpine
+#5 DONE 0.8s
+
+#6 [api internal] load .dockerignore
+#6 transferring context: 146B done
+#6 DONE 0.0s
+
+#7 [api internal] load build context
+#7 transferring context: 10.71kB done
+#7 DONE 0.0s
+
+#8 [beat  1/10] FROM docker.io/library/python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
+#8 resolve docker.io/library/python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704 done
+#8 DONE 0.0s
+
+#9 [beat  2/10] WORKDIR /app
+#9 CACHED
+
+#10 [beat  3/10] COPY requirements.lock ./
+#10 CACHED
+
+#11 [beat  4/10] RUN pip install -r requirements.lock && useradd --create-home --uid 10001 teamwiki
+#11 CACHED
+
+#12 [beat  5/10] COPY pyproject.toml ./
+#12 CACHED
+
+#13 [frontend internal] load metadata for docker.io/library/node:22-alpine
+#13 DONE 0.8s
+
+#14 [frontend internal] load .dockerignore
+#14 transferring context: 161B done
+#14 DONE 0.0s
+
+#15 [migrate  6/10] COPY app ./app
+#15 DONE 0.0s
+
+#16 [frontend] resolving provenance for metadata file
+#16 DONE 0.0s
+
+#17 [frontend stage-1 1/4] FROM docker.io/library/nginx:stable-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
+#17 resolve docker.io/library/nginx:stable-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951 done
+#17 DONE 0.0s
+
+#18 [frontend build 1/6] FROM docker.io/library/node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
+#18 resolve docker.io/library/node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 done
+#18 DONE 0.0s
+
+#19 [frontend internal] load build context
+#19 transferring context: 1.44kB done
+#19 DONE 0.0s
+
+#20 [frontend build 2/6] WORKDIR /app
+#20 CACHED
+
+#21 [frontend build 3/6] COPY frontend/package*.json ./
+#21 CACHED
+
+#22 [frontend build 6/6] RUN npm run build
+#22 CACHED
+
+#23 [frontend build 4/6] RUN npm ci
+#23 CACHED
+
+#24 [frontend stage-1 3/4] COPY infra/proxy-teamwiki.conf /etc/nginx/proxy-teamwiki.conf
+#24 CACHED
+
+#25 [frontend stage-1 2/4] COPY infra/nginx.conf /etc/nginx/conf.d/default.conf
+#25 CACHED
+
+#26 [frontend build 5/6] COPY frontend/ ./
+#26 CACHED
+
+#27 [frontend stage-1 4/4] COPY --from=build /app/dist /usr/share/nginx/html
+#27 CACHED
+
+#28 [frontend] exporting to image
+#28 exporting layers done
+#28 exporting manifest sha256:c67d5802a564c7533ef37ebf7499e56550f449298f9e514135cce75207d30f4c done
+#28 exporting config sha256:8f2758182316946aa91ccf02d471e42632cb9d1962cc80d57d1f9d5a7624506c done
+#28 exporting attestation manifest sha256:6b950f3f9afd88cf621eb7c7ecfcf760e5c99da564fcfb10acae930a2740f679 done
+#28 exporting manifest list sha256:1a7067f7ae78ed6fb4dcd724fc19f86c534a0bfb82cdd1b635e9ca15ab4a1266 done
+#28 naming to docker.io/library/teamwiki-frontend:latest done
+#28 unpacking to docker.io/library/teamwiki-frontend:latest done
+#28 DONE 0.0s
+
+#29 [worker  7/10] RUN pip install --no-deps .
+#29 0.528 Processing /app
+#29 0.529   Installing build dependencies: started
+#29 1.865   Installing build dependencies: finished with status 'done'
+#29 1.865   Getting requirements to build wheel: started
+#29 1.979   Getting requirements to build wheel: finished with status 'done'
+#29 1.980   Preparing metadata (pyproject.toml): started
+#29 2.141   Preparing metadata (pyproject.toml): finished with status 'done'
+#29 2.143 Building wheels for collected packages: teamwiki-backend
+#29 2.144   Building wheel for teamwiki-backend (pyproject.toml): started
+#29 2.192   Building wheel for teamwiki-backend (pyproject.toml): finished with status 'done'
+#29 2.192   Created wheel for teamwiki-backend: filename=teamwiki_backend-0.2.0-py3-none-any.whl size=33504 sha256=a4e5c336b570cf59e939a1cdff256766b6d67dc6b8fd7e279c98937f88629ee2
+#29 2.192   Stored in directory: /tmp/pip-ephem-wheel-cache-h7f43ff6/wheels/54/1b/b7/aa63e25c8f14f4f2ae7b04e6097bdecb770e455c5c1ee0a600
+#29 2.194 Successfully built teamwiki-backend
+#29 2.194 Installing collected packages: teamwiki-backend
+#29 2.210 Successfully installed teamwiki-backend-0.2.0
+#29 2.210 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#29 2.349
+#29 2.349 [notice] A new release of pip is available: 25.0.1 -> 26.2.2
+#29 2.349 [notice] To update, run: pip install --upgrade pip
+#29 DONE 2.4s
+
+#30 [api  8/10] COPY alembic.ini ./
+#30 DONE 0.0s
+
+#31 [migrate  9/10] COPY migrations ./migrations
+#31 DONE 0.0s
+
+#32 [beat 10/10] COPY --chmod=755 entrypoint.sh /app/entrypoint.sh
+#32 DONE 0.0s
+
+#33 [beat] exporting to image
+#33 exporting layers 0.0s done
+#33 exporting manifest sha256:5b406e22f179028059f382c9ccb21f85f9641c5fcd752ddc0b04bc55250304f2 done
+#33 exporting config sha256:19317e2faa316887b3631b40cfd4af1022922f96f629b63dca90088cb22034b8 done
+#33 exporting attestation manifest sha256:99487005580bb1a2f452789ec5b08376b03d54e7d703956b6cdfe102ede97824 0.0s done
+#33 exporting manifest list sha256:a63bf752dcec818ad9d17ccacb0b2f10bfd4402deb15d233f7bc3515c01016b8 done
+#33 naming to docker.io/library/teamwiki-backend:local done
+#33 unpacking to docker.io/library/teamwiki-backend:local 0.0s done
+#33 DONE 0.1s
+
+#34 [api] exporting to image
+#34 exporting layers 0.0s done
+#34 exporting manifest sha256:3ae51ceecce2bb16a35ef7248fe1794c3eebb0e73aea29ec9209feaf83543b9c done
+#34 exporting config sha256:a0b69000544f068d8d6951f6586cd44e315845469daf875d3cd7c9f88273bbe6 done
+#34 exporting attestation manifest sha256:6ca722dabb40cf67d575e84b3225ff425ec52473aff258b25611a15387765499 0.0s done
+#34 exporting manifest list sha256:dd166556f39ed3202d351671ea80955cf9bb8ca8f03cc1f7c20a6d5c006f299d done
+#34 naming to docker.io/library/teamwiki-backend:local done
+#34 unpacking to docker.io/library/teamwiki-backend:local 0.0s done
+#34 DONE 0.1s
+
+#35 [migrate] exporting to image
+#35 exporting layers 0.0s done
+#35 exporting manifest sha256:9f167da1541b5e901e09bface9e29478a554104a63b10c2c261a4433dda80951 done
+#35 exporting config sha256:eacc041b442f7c5b91e05a82ae087da743176c001ea39c80ada2a9743507f87f done
+#35 exporting attestation manifest sha256:ff708abb0e907ab2b575bc1848a34722c02eff4ac642671578481ec7dcfd4d46 0.0s done
+#35 exporting manifest list sha256:895c67c3a87adf4977624493af1115a270620cf2dfca0a9fa538ae64e13dc21d done
+#35 naming to docker.io/library/teamwiki-backend:local done
+#35 unpacking to docker.io/library/teamwiki-backend:local 0.0s done
+#35 DONE 0.1s
+
+#36 [worker] exporting to image
+#36 exporting layers 0.0s done
+#36 exporting manifest sha256:b60503d31d6d719a94cc4541774a99420980a9766641245407f066e0313d44ab done
+#36 exporting config sha256:a7c2e91446a5857ef6387a561b6527892335cb2c06734c3f8a8c737e2818911d done
+#36 exporting attestation manifest sha256:17b5258edaf06315e81eeabd3667e7f367dcbd5fbb72452cb9c4eb5269266474 0.0s done
+#36 exporting manifest list sha256:3c2394cd45232c253b8c8ed33ae20ea4ccc523cc2febdd56bd92793538c0981a done
+#36 naming to docker.io/library/teamwiki-backend:local done
+#36 unpacking to docker.io/library/teamwiki-backend:local 0.0s done
+#36 DONE 0.1s
+
+#37 [api] resolving provenance for metadata file
+#37 DONE 0.0s
+
+#38 [beat] resolving provenance for metadata file
+#38 DONE 0.0s
+
+#39 [migrate] resolving provenance for metadata file
+#39 DONE 0.0s
+
+#40 [worker] resolving provenance for metadata file
+#40 DONE 0.0s
+ Image teamwiki-backend:local Built
+ Image teamwiki-backend:local Built
+ Image teamwiki-backend:local Built
+ Image teamwiki-backend:local Built
+ Image teamwiki-frontend Built

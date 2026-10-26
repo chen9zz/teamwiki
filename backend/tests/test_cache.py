@@ -71,3 +71,51 @@ async def test_cache_outage_degrades_to_database(client, monkeypatch):
     response = await client.get(f"/api/workspaces/{wid}/pages/{page['id']}")
     assert response.status_code == 200
     assert response.json()["content"] == "initial"
+
+
+async def test_concurrent_cold_page_reads_fetch_body_once(client, redis_cache, monkeypatch):
+    import asyncio
+
+    from app.services import pages
+
+    await register(client)
+    wid = (await workspace(client))["id"]
+    page = await create_page(client, wid)
+    entered, release = asyncio.Event(), asyncio.Event()
+    body_fetches = 0
+    original = pages.find_page
+
+    async def observe_body_fetch(*args, **kwargs):
+        nonlocal body_fetches
+        body_fetches += 1
+        entered.set()
+        await release.wait()
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(pages, "find_page", observe_body_fetch)
+    url = f"/api/workspaces/{wid}/pages/{page['id']}"
+    requests = [asyncio.create_task(client.get(url)) for _ in range(20)]
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        await asyncio.sleep(0.02)
+        release.set()
+        responses = await asyncio.wait_for(asyncio.gather(*requests), 3)
+        assert all(response.status_code == 200 for response in responses)
+        assert all(response.json()["content"] == "initial" for response in responses)
+        assert body_fetches == 1
+    finally:
+        release.set()
+        await asyncio.gather(*requests, return_exceptions=True)
+
+
+async def test_warm_page_hit_does_not_wait_for_fill_lock(client, redis_cache):
+    import asyncio
+
+    await register(client)
+    wid = (await workspace(client))["id"]
+    page = await create_page(client, wid)
+    url = f"/api/workspaces/{wid}/pages/{page['id']}"
+    assert (await client.get(url)).status_code == 200
+    async with cache.fill_lock(cache.page_key(wid, page["id"], page["version"])):
+        response = await asyncio.wait_for(client.get(url), 0.5)
+    assert response.status_code == 200
