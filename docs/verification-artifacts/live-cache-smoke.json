@@ -1,0 +1,7 @@
+{
+  "real_redis_cache_fill": true,
+  "old_key_eviction": true,
+  "delayed_old_fill_safe": true,
+  "delete_denies_cached_read": true,
+  "workspace_id": "33298012-195a-4231-a486-bcaa68bc2459"
+}

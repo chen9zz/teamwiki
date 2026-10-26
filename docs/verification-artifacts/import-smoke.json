@@ -1,0 +1,24 @@
+{
+  "workspace_id": "711e0949-d11e-4556-980c-3964466d76d8",
+  "job_id": "69b37f6f-8a50-487c-885c-dd3493f52a6d",
+  "duplicate_request_same_job": true,
+  "status": "completed",
+  "processed": 1,
+  "total": 1,
+  "page_count_before_duplicate_delivery": 1,
+  "result": [
+    "4d96ed5d-0144-4857-af37-8aa128eee26c"
+  ],
+  "duplicate_celery_deliveries": [
+    {
+      "id": "69b37f6f-8a50-487c-885c-dd3493f52a6d",
+      "status": "completed"
+    },
+    {
+      "id": "69b37f6f-8a50-487c-885c-dd3493f52a6d",
+      "status": "completed"
+    }
+  ],
+  "page_count_after_duplicate_delivery": 1,
+  "page_version_after_duplicate_delivery": 1
+}
