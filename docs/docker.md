@@ -3,7 +3,7 @@
 ## Start and verify
 
 Docker Engine and the Compose plugin are required. This deployment was verified on Linux ARM64. The Dockerfiles do not force an
-architecture, but AMD64 still needs its own build verification. On macOS, a
+architecture. ARM64 was verified locally; AMD64 build/start/smoke verification passed in [GitHub Actions](https://github.com/chen9zz/teamwiki/actions/runs/40275391284). On macOS, a
 Docker-compatible runtime such as Docker Desktop, Colima or Lima is required.
 Run from the repository root:
 
@@ -143,8 +143,8 @@ with `cache: degraded` while page reads still succeeded. An import queued with
 worker/beat stopped completed after restarting the broker and resuming them.
 Nginx syntax, authentication rate limiting (429), backend UID 10001, private
 network and Redis eviction/persistence policies were checked directly. The CI
-container job is configured with the same smoke, but a remote GitHub Actions run
-is separate from this local evidence.
+container job also passed the AMD64 build/start/smoke on a fresh GitHub runner
+in [run 40275391284](https://github.com/chen9zz/teamwiki/actions/runs/40275391284). The local fault-injection and browser checks above remain separate evidence.
 
 The final 0.2.0 image was rebuilt after connection-refusal and database DNS-failure
 handling were corrected. With the container PostgreSQL stopped, readiness and

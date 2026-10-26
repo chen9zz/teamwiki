@@ -110,7 +110,7 @@ Bitmap Heap Scan on pages
 
 - 首版未执行的 Docker / Compose 镜像构建与容器联调，已在0.2升级中完成。
 - 生产 TLS、跨主机负载、持久化存储故障和长期容量测试。
-- GitHub Actions 的远程执行；CI 配置已提交为可运行工作流，远程结果需由仓库运行确认。
+- GitHub Actions 远程执行已补齐：后端、前端与完整 Compose 三项任务通过，[公开运行记录](https://github.com/chen9zz/teamwiki/actions/runs/40275391284)。
 
 
 ## 前端与浏览器验收
@@ -132,7 +132,7 @@ Node 26 本机执行 `npm run typecheck`、`npm test`、`npm run build` 均成�
 
 本次从干净0abea29基线开发，完整 PostgreSQL/Redis 后端回归为77项通过，Ruff检查通过。新增范围包括共享/排他工作区锁、单来源链接索引、权限撤销竞态、连接池等待、慢SQL与锁超时、过载503、原生数据库连接拒绝503、Redis连接复用/生命周期/无响应、并发冷缓存合并、热缓存绕过填充锁、两进程指标聚合和基准统计校验。
 
-实际 Docker Engine、Compose和持久化VM完成后端/前端镜像构建、完整栈启动与迁移、真实Worker/Beat异步导入、版本冲突、跨租户拒绝、缓存中断降级、队列重启后的排队任务恢复。指标在两个API进程间聚合，入口不公开内部指标；Nginx认证限流产生429，后端非root运行。远程GitHub Actions尚未执行，新CI容器任务已按同一套本机已执行命令配置。
+实际 Docker Engine、Compose和持久化VM完成后端/前端镜像构建、完整栈启动与迁移、真实Worker/Beat异步导入、版本冲突、跨租户拒绝、缓存中断降级、队列重启后的排队任务恢复。指标在两个API进程间聚合，入口不公开内部指标；Nginx认证限流产生429，后端非root运行。首次远程 GitHub Actions 已通过三项任务；远程容器任务验证 AMD64 镜像构建、完整栈启动与冒烟，本机故障注入和浏览器检查仍单独记录。
 
 同条件短测：100篇248字节初始正文、每页一条链接，16请求流，2API进程，池5+10，读/写分别10秒。不同文档保存136.390→764.940请求/秒，P95 138.778→32.144毫秒；读取738.892→753.711请求/秒。两边均5个热点胜者、75个预期409，修订连续。部署默认池为5+5，与刻意匹配旧默认的基准池不同。数据规模、时长、同机闭环负载限制和原始JSON详见 [并发验证](concurrency.md)。
 
@@ -151,4 +151,9 @@ Node 26 本机执行 `npm run typecheck`、`npm test`、`npm run build` 均成�
 ![容器正式构建验收](assets/docker-v0.2.png)
 
 
-0.2依赖锁新增prometheus-client0.26.0：运行依赖55个，运行及开发依赖90个，SQLAlchemy仍固定2.0.55。当前未验证AMD64镜像和远程GitHub Actions；生产TLS、跨主机故障与长期容量验证仍需在目标环境完成。
+0.2依赖锁新增prometheus-client0.26.0：运行依赖55个，运行及开发依赖90个，SQLAlchemy仍固定2.0.55。AMD64 镜像及远程 GitHub Actions 已在首次公开仓库运行中验证；生产TLS、跨主机故障与长期容量验证仍需在目标环境完成。
+
+
+## 首次公开仓库 CI（2026-10-26）
+
+[GitHub Actions 运行 40275391284](https://github.com/chen9zz/teamwiki/actions/runs/40275391284) 对提交 `4913407` 的三个任务全部通过：后端 PostgreSQL/Redis 测试 77 项（8.38 秒）、Ruff 与可逆迁移；前端测试 13 项、生产构建和编译产物回归；Linux AMD64 完整 Compose 构建、启动、种子数据、版本冲突、租户隔离、Worker/Beat 导入及双 API 进程指标检查。远程结果没有新增性能或生产容量结论。结构化记录见 [github-actions-v0.2.json](verification-artifacts/github-actions-v0.2.json)。
