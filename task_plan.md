@@ -43,11 +43,11 @@ Earlier Docker-absent constraint resolved in0.2.0: persistent task-local Docker-
 
 
 ## v0.3 (2026-10-28)
-Status: in_progress
+Status: complete
 - [x] Hierarchical ZIP import with atomic idempotent folder creation and bounded resources.
 - [x] Metadata tree/sibling pagination and history load-more, safe parent selection.
 - [x] Playwright real-browser full-stack workflows and CI.
 - [x] Full regression, migration and container validation; independent review.
-- [ ] Release docs, GitHub synchronization and canonical source update.
+- [x] Release docs, GitHub synchronization and canonical source update.
 
 Environment: native worktree tool rejected sourceRoot because canonical repo is outside the chat workspace list; use an isolated clone under task work/. Existing demo runtime remains untouched.
