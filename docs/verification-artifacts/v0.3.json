@@ -1,0 +1,91 @@
+{
+  "version": "0.3.0",
+  "verified_on": "2026-10-28",
+  "base_commit": "c2831b86b5ff39956b0258753abc6bd7092828fb",
+  "backend": {
+    "runtime": "Python3.12 / native PostgreSQL17 / Redis7",
+    "passed": 106,
+    "duration_seconds": 7.07
+  },
+  "frontend": {
+    "vitest_passed": 25,
+    "typecheck": "passed",
+    "build": "passed",
+    "production_dom_regression": "passed"
+  },
+  "browser": {
+    "engine": "Playwright1.64.1 / Chromium",
+    "mode": "compiled Docker frontend, real API/PostgreSQL/Redis/Worker/Beat, no response stubs",
+    "origin": "http://127.0.0.1:8090",
+    "workers": 1,
+    "passed": 6,
+    "failed": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "duration_ms": 31502.051,
+    "cases": [
+      {
+        "title": "login, edit and save through the production UI",
+        "result": "expected"
+      },
+      {
+        "title": "independent browser sessions compare the same version and retain the 409 draft",
+        "result": "expected"
+      },
+      {
+        "title": "Viewer has read-only controls and the real API rejects a forced write",
+        "result": "expected"
+      },
+      {
+        "title": "nested ZIP uploaded in the UI completes in the real worker and refreshes the tree",
+        "result": "expected"
+      },
+      {
+        "title": "root and child tree collections load bounded batches beyond fifty rows",
+        "result": "expected"
+      },
+      {
+        "title": "history loads older real revisions beyond the first fifty snapshots",
+        "result": "expected"
+      }
+    ],
+    "verified_at_utc": "2026-10-28T03:51:22.599Z"
+  },
+  "migration": {
+    "revision": "0002_page_tree_order",
+    "upgrade_downgrade_base_upgrade": "passed"
+  },
+  "review_fixes": [
+    "reject blank directory titles after truncation before queueing",
+    "discard cross-workspace stale manage responses",
+    "load direct parent child navigation independently",
+    "resolve selected historical Markdown using current tenant metadata",
+    "cancel stale manage requests on every same-workspace dialog intent"
+  ],
+  "limits": [
+    "bounded atomic import progress remains 0-to-N",
+    "offset pagination is not a snapshot during concurrent structural writes",
+    "historical relationship snapshots are not stored",
+    "no new throughput or production capacity result in v0.3"
+  ],
+  "docker_smoke": {
+    "result": "passed",
+    "frontend": true,
+    "readiness": {
+      "database": "ok",
+      "cache": "ok"
+    },
+    "versions": true,
+    "tenant_isolation": true,
+    "worker_and_beat_import": true,
+    "workspace_id": "0aead94e-c7fa-44a7-844c-9164390b3656",
+    "job_id": "c24778b2-9ced-4c57-941c-c9229c51f7d0"
+  },
+  "docker": {
+    "platform": "linux/arm64",
+    "full_build": "passed",
+    "ready": "passed",
+    "revision": "0002_page_tree_order",
+    "isolated_compose_project": "teamwiki-v03"
+  }
+}

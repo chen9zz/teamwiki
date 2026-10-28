@@ -2,6 +2,8 @@
 
 所有业务实体使用 36 字符 UUID，时间列使用带时区时间。`backend/migrations/versions/0001_initial.py` 是显式、可回退的初始迁移；应用启动不会执行 `create_all`。
 
+v0.3新增可逆迁移`0002_page_tree_order`，为页面增加`(workspace_id,parent_id,deleted_at,title,id)`复合索引。目录仍使用Page，目录导入项目键为`dir:规范路径`；没有新增目录表或业务字段，进度只统计Markdown文件。
+
 ```mermaid
 erDiagram
   USERS ||--o{ AUTH_SESSIONS : owns

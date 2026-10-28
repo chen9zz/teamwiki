@@ -84,3 +84,20 @@ export interface AuditEvent {
   details?: unknown;
   metadata?: unknown;
 }
+
+export type PageSummary = Pick<
+  Page,
+  'id' | 'workspace_id' | 'parent_id' | 'title' | 'tags' | 'version' | 'updated_at'
+> & { has_children?: boolean };
+export interface PageBatch {
+  items: PageSummary[];
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
+export type WikiLink = Pick<PageLink, 'raw_target' | 'target_id' | 'state'>;
+export interface RevisionLinks {
+  outgoing: WikiLink[];
+  resolution: 'current_workspace';
+}

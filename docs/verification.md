@@ -157,3 +157,9 @@ Node 26 本机执行 `npm run typecheck`、`npm test`、`npm run build` 均成�
 ## 首次公开仓库 CI（2026-10-26）
 
 [GitHub Actions 运行 40275391284](https://github.com/chen9zz/teamwiki/actions/runs/40275391284) 对提交 `4913407` 的三个任务全部通过：后端 PostgreSQL/Redis 测试 77 项（8.38 秒）、Ruff 与可逆迁移；前端测试 13 项、生产构建和编译产物回归；Linux AMD64 完整 Compose 构建、启动、种子数据、版本冲突、租户隔离、Worker/Beat 导入及双 API 进程指标检查。远程结果没有新增性能或生产容量结论。结构化记录见 [github-actions-v0.2.json](verification-artifacts/github-actions-v0.2.json)。
+
+## v0.3 层级导入、分页与真实浏览器（2026-10-28）
+
+独立测试库执行PostgreSQL/Redis后端106项通过（7.07秒），前端25项、类型检查、生产构建与产物DOM回归通过；显式0002迁移head→base→head通过。最终ARM64完整Docker镜像上的Chromium6项通过（31.5秒，无跳过/重试），包含真实Worker ZIP层级、103页目录及父页正文分页、52条历史与旧版本链接。数据来自真实API与浏览器，无响应mock。
+
+独立审查发现并按红绿回归修复：目录标题截断空白导致排队后失败；跨空间和同空间弹窗意图切换后的迟到管理响应；父页子文档导航依赖首页缓存；历史预览链接缺少按需解析。当前历史关系按当前空间元数据解析，非历史关系快照。详细行为与边界见[v0.3](v0.3.md)，结构化记录见[v0.3.json](verification-artifacts/v0.3.json)。本轮不新增吞吐量或生产容量结论。

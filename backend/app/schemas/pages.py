@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -68,6 +69,24 @@ class PageOut(PageFields):
     updated_by: str
 
 
+class PageSummary(BaseModel):
+    id: str
+    workspace_id: str
+    parent_id: str | None
+    title: str
+    tags: list[str]
+    version: int
+    updated_at: datetime
+    has_children: bool
+
+
+class PageBatch(BaseModel):
+    items: list[PageSummary]
+    limit: int
+    offset: int
+    has_more: bool
+
+
 class RevisionOut(PageFields):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -77,6 +96,17 @@ class RevisionOut(PageFields):
     deleted_at: datetime | None
     created_at: datetime
     created_by: str
+
+
+class PreviewLink(BaseModel):
+    raw_target: str
+    target_id: str | None
+    state: Literal["resolved", "unresolved", "ambiguous", "deleted"]
+
+
+class RevisionLinkPreview(BaseModel):
+    resolution: Literal["current_workspace"]
+    outgoing: list[PreviewLink]
 
 
 class JobOut(BaseModel):

@@ -1,4 +1,4 @@
-import type { Page, PageLink, Role } from './types';
+import type { Page, Role, WikiLink } from './types';
 export const roleLabels: Record<Role, string> = {
   owner: '所有者',
   admin: '管理员',
@@ -17,7 +17,10 @@ export function date(value?: string, time = false): string {
     ...(time ? { hour: '2-digit', minute: '2-digit' } : { year: 'numeric' }),
   });
 }
-export function availableParents(pages: Page[], id?: string): Page[] {
+export function availableParents<T extends Pick<Page, 'id' | 'parent_id'>>(
+  pages: T[],
+  id?: string,
+): T[] {
   if (!id) return pages;
   const descendants = new Set([id]);
   let changed = true;
@@ -54,8 +57,8 @@ export function headingList(content: string): { depth: number; text: string; id:
 }
 export function wikiMarkdown(
   content: string,
-  pages: Page[],
-  links: PageLink[],
+  pages: Pick<Page, 'id' | 'title'>[],
+  links: WikiLink[],
   wid: string,
 ): string {
   let fence = '';
@@ -75,7 +78,10 @@ export function wikiMarkdown(
           if (part.startsWith('`')) return part;
           return part.replace(/\[\[([^\]\n]+)\]\]/g, (_all, raw: string) => {
             const [target, customLabel] = raw.split('|');
-            const label = (customLabel || target.replace(/^id:/, '')).replace(/[\\\[\]]/g, '\\$&');
+            const label = (customLabel || target.replace(/^id:/, '')).replace(
+              /[\\\[\]]/g,
+              '\\$&',
+            );
             const pinned = links.find(
               (link) => link.raw_target === raw || link.raw_target === target,
             );

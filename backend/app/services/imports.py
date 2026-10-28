@@ -11,20 +11,71 @@ MAX_UPLOAD = 8 * 1024 * 1024
 MAX_FILE = 2 * 1024 * 1024
 MAX_EXPANDED = 16 * 1024 * 1024
 MAX_FILES = 200
+MAX_DIRECTORIES = 200
+MAX_DIRECTORY_DEPTH = 20
+MAX_PAGES = 400
 
 
 def _invalid(message):
     raise HTTPException(422, detail={"code": "invalid_import", "message": message})
 
 
-def _path(name: str) -> PurePosixPath:
+def _path(name: str, *, directory: bool = False) -> PurePosixPath:
     normalized = name.replace("\\", "/")
     path = PurePosixPath(normalized)
-    if path.is_absolute() or ".." in path.parts or ":" in normalized or "\x00" in normalized:
+    if (
+        path.is_absolute()
+        or ".." in path.parts
+        or ":" in normalized
+        or any(ord(character) < 32 or ord(character) == 127 for character in normalized)
+        or any(not part.strip() for part in path.parts)
+    ):
         _invalid("Unsafe archive path")
-    if len(normalized) > 1024 or not path.name or path.suffix.lower() not in {".md", ".markdown"}:
+    if len(normalized) > 1024 or not path.name:
+        _invalid("Unsafe or oversized archive path")
+    if directory:
+        if not path.name[:240].strip():
+            _invalid("Directory title cannot be blank after truncation")
+        if len(str(path)) + len("dir:") > 1024 or len(path.parts) > MAX_DIRECTORY_DEPTH:
+            _invalid("Directory path is too long or exceeds 20 levels")
+    elif path.suffix.lower() not in {".md", ".markdown"} or not path.stem[:240].strip():
         _invalid("Only Markdown files are supported")
     return path
+
+
+def _directory_paths(paths: list[str], explicit_directories: list[str] = ()) -> list[PurePosixPath]:
+    """Validate all directory identities, returning only ancestors of documents."""
+    if not 1 <= len(paths) <= MAX_FILES:
+        _invalid("Archive must contain between 1 and 200 Markdown files")
+    directory_spellings = {}
+    generated = set()
+    file_paths = set()
+
+    def register_directory(path):
+        _path(str(path), directory=True)
+        key = str(path).casefold()
+        previous = directory_spellings.setdefault(key, path)
+        if previous != path:
+            _invalid("Ambiguous directory paths differing only by case")
+
+    for name in explicit_directories:
+        path = _path(name, directory=True)
+        for directory in (path, *path.parents):
+            if directory != PurePosixPath("."):
+                register_directory(directory)
+    for name in paths:
+        path = _path(name)
+        key = str(path).casefold()
+        if key in file_paths:
+            _invalid("Duplicate archive paths")
+        file_paths.add(key)
+        for directory in path.parents:
+            if directory != PurePosixPath("."):
+                register_directory(directory)
+                generated.add(directory)
+    if len(generated) > MAX_DIRECTORIES or len(generated) + len(paths) > MAX_PAGES:
+        _invalid("Archive exceeds 200 directories or 400 total pages")
+    return sorted(generated, key=lambda path: (len(path.parts), str(path)))
 
 
 def _document(name: str, data: bytes) -> dict:
@@ -44,7 +95,9 @@ def validate_upload(filename: str, data: bytes) -> list[dict]:
     if not data or len(data) > MAX_UPLOAD:
         _invalid("Upload must contain data and be no larger than 8 MiB")
     if not filename.lower().endswith(".zip"):
-        return [_document(filename, data)]
+        document = _document(filename, data)
+        _directory_paths([document["path"]])
+        return [document]
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             entries = archive.infolist()
@@ -55,15 +108,18 @@ def validate_upload(filename: str, data: bytes) -> list[dict]:
                 _invalid("Archive must contain between 1 and 200 Markdown files")
             if sum(entry.file_size for entry in files) > MAX_EXPANDED:
                 _invalid("Expanded archive exceeds 16 MiB")
-            paths = set()
+            directories = []
+            for entry in entries:
+                # ZipInfo.filename truncates at NUL; validate the stored name too.
+                _path(entry.orig_filename, directory=entry.is_dir())
+                if stat.S_ISLNK(entry.external_attr >> 16) or entry.flag_bits & 1:
+                    _invalid("Symlinks and encrypted files are not supported")
+                if entry.is_dir():
+                    directories.append(entry.filename)
+            _directory_paths([entry.filename for entry in files], directories)
             documents = []
             for entry in files:
                 path = _path(entry.filename)
-                if str(path).casefold() in paths:
-                    _invalid("Duplicate archive paths")
-                paths.add(str(path).casefold())
-                if stat.S_ISLNK(entry.external_attr >> 16) or entry.flag_bits & 1:
-                    _invalid("Symlinks and encrypted files are not supported")
                 if entry.file_size > MAX_FILE or entry.file_size > max(1, entry.compress_size) * 100:
                     _invalid("Unsafe compression ratio or oversized Markdown file")
                 with archive.open(entry) as stream:
@@ -84,6 +140,7 @@ async def create_import_job(db, workspace_id: str, user_id: str, documents: list
         raise HTTPException(422, "Idempotency-Key must contain between 8 and 128 characters")
     await lock_workspace(db, workspace_id)
     await require_member(db, workspace_id, user_id, MANAGERS)
+    _directory_paths([document["path"] for document in documents])
     existing = await db.scalar(
         select(ImportJob).where(
             ImportJob.workspace_id == workspace_id,
@@ -158,32 +215,55 @@ async def consume_import(db, job_id: str):
     if job.status in {"completed", "failed"}:
         return job
     await require_member(db, workspace_id, job.created_by, MANAGERS)
+    directories = _directory_paths([document["path"] for document in job.payload])
     job.status = "running"
     job.attempts += 1
     job.error = None
     job.updated_at = utcnow()
     await db.flush()
     result = []
-    for document in job.payload:
-        existing = await db.scalar(
-            select(Page).where(
-                Page.workspace_id == workspace_id,
-                Page.import_job_id == job.id,
-                Page.import_item_key == document["path"],
-            )
+    # Identities are local to this job and workspace, never matched by title.
+    imported = {
+        page.import_item_key: page
+        for page in await db.scalars(
+            select(Page).where(Page.workspace_id == workspace_id, Page.import_job_id == job.id)
         )
-        if existing is None:
+    }
+    directory_ids = {}
+    for directory in directories:
+        key = f"dir:{directory}"
+        page = imported.get(key)
+        if page is None:
             page = await create_in_transaction(
                 db,
                 workspace_id,
                 job.created_by,
-                PageCreate(title=document["title"], content=document["content"]),
+                PageCreate(
+                    title=directory.name[:240], content="", parent_id=directory_ids.get(directory.parent)
+                ),
                 import_job_id=job.id,
-                import_item_key=document["path"],
+                import_item_key=key,
                 index_links=False,
             )
-        else:
-            page = existing
+        directory_ids[directory] = page.id
+    for document in job.payload:
+        path = _path(document["path"])
+        key = str(path)
+        page = imported.get(key)
+        if page is None:
+            page = await create_in_transaction(
+                db,
+                workspace_id,
+                job.created_by,
+                PageCreate(
+                    title=document["title"],
+                    content=document["content"],
+                    parent_id=directory_ids.get(path.parent),
+                ),
+                import_job_id=job.id,
+                import_item_key=key,
+                index_links=False,
+            )
         result.append(page.id)
         job.processed = len(result)
     await reconcile_workspace(db, workspace_id)

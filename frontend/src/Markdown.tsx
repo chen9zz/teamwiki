@@ -2,7 +2,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Link } from 'react-router-dom';
 import { wikiMarkdown } from './lib';
-import type { Page, PageLink } from './types';
+import type { Page, WikiLink } from './types';
 export function Markdown({
   content,
   pages = [],
@@ -10,8 +10,8 @@ export function Markdown({
   wid = '',
 }: {
   content: string;
-  pages?: Page[];
-  links?: PageLink[];
+  pages?: Pick<Page, 'id' | 'title'>[];
+  links?: WikiLink[];
   wid?: string;
 }) {
   return (

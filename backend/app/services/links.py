@@ -119,6 +119,53 @@ def _source_links(page, old_links, by_id, by_title):
         )
 
 
+async def preview_revision_links(db, workspace_id, page_id, revision_version, user_id):
+    """Resolve a selected snapshot against current tenant metadata without indexing.
+
+    Revisions store Markdown, not historical relationship snapshots. Explicit ID
+    links keep their identity; title links use today's catalog and ambiguity rules.
+    """
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+    from sqlalchemy import select
+
+    from app.models import Page, PageRevision
+    from app.services.identity import require_member
+
+    await require_member(db, workspace_id, user_id)
+    source = await db.scalar(
+        select(Page.id).where(Page.workspace_id == workspace_id, Page.id == page_id)
+    )
+    if source is None:
+        raise HTTPException(404, "Page not found")
+    content = await db.scalar(
+        select(PageRevision.content).where(
+            PageRevision.workspace_id == workspace_id,
+            PageRevision.page_id == page_id,
+            PageRevision.version == revision_version,
+        )
+    )
+    if content is None:
+        raise HTTPException(404, "Revision not found")
+    targets = (
+        await db.execute(
+            select(Page.id, Page.title, Page.deleted_at).where(Page.workspace_id == workspace_id)
+        )
+    ).all()
+    by_id, by_title = _target_catalog(targets)
+    snapshot = SimpleNamespace(
+        id=page_id, workspace_id=workspace_id, content=content, version=revision_version
+    )
+    return {
+        "resolution": "current_workspace",
+        "outgoing": [
+            {"raw_target": link.raw_target, "target_id": link.target_id, "state": link.state}
+            for link in _source_links(snapshot, [], by_id, by_title)
+        ],
+    }
+
+
 async def reconcile_source(db, page) -> None:
     """Index only the edited source under a shared workspace lock.
 

@@ -53,6 +53,12 @@ cd backend
 
 默认连接池、超时、过载响应和私有指标见 [Docker 运维配置](docker.md)；本机已配置的便携 Docker 启动方法也见该文档。
 
+## v0.3 浏览器验收与升级
+
+v0.2升级运行`alembic upgrade head`，新增0002仅添加页面树复合索引，不改变已有业务字段或已完成导入任务。升级前仍应备份数据库；schema回退0001只移除该索引。ZIP新任务开始生成目录页，已完成的旧平铺导入不会被自动搬动。
+
+真实浏览器测试先启动完整的已编译Compose栈，再在frontend目录运行`npm ci`、`npx playwright install --with-deps chromium`与`E2E_BASE_URL=http://127.0.0.1:8080 npm run test:e2e`。请使用独立Compose项目/数据库；一个worker，无response mock。失败trace/截图/HTML产物由Git忽略，CI自动上传诊断。更多见[E2E说明](../frontend/e2e/README.md)。
+
 ## 数据库迁移与备份
 
 应用只使用迁移后的模式。升级前备份数据库，运行 `alembic upgrade head`；不要让多个实例同时执行迁移。迁移回退会删除相应结构，初始迁移 `downgrade base` 会清空全部业务表，仅适用于可丢弃测试库。

@@ -10,3 +10,6 @@ outputs
 **/__pycache__
 **/.pytest_cache
 **/.ruff_cache
+**/test-results
+**/playwright-report
+**/playwright/.auth

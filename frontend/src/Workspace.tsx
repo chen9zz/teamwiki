@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowDownToLine,
@@ -31,8 +31,9 @@ import {
 } from 'lucide-react';
 import { api, download, message } from './api';
 import { availableParents, canManage, canWrite, date, roleLabels } from './lib';
-import type { Page, User, Workspace } from './types';
+import type { Page, PageSummary, User, Workspace } from './types';
 import { Empty, ErrorNotice, Loading, Modal, useToast } from './ui';
+import { PAGE_BATCH_SIZE, usePageSummaries, usePageTree } from './pagination';
 import { Brand, NewWorkspace } from './App';
 import { ImportDialog, MembersView, TrashView, AuditView } from './panels';
 
@@ -41,93 +42,92 @@ const PageEditor = lazy(() =>
   import('./PageEditor').then((module) => ({ default: module.PageEditor })),
 );
 
-function PageTree({
-  pages,
-  current,
-  wid,
-  writable,
-  onCreate,
-  onManage,
-}: {
-  pages: Page[];
+interface TreeProps {
   current?: string;
   wid: string;
   writable: boolean;
-  onCreate: (parent?: string) => void;
-  onManage: (page: Page) => void;
-}) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const ids = new Set(pages.map((page) => page.id));
-  function level(parent: string | null, depth = 0): React.ReactNode {
-    if (depth > 30) return null;
-    return pages
-      .filter((page) =>
-        parent === null ? !page.parent_id || !ids.has(page.parent_id) : page.parent_id === parent,
-      )
-      .map((page) => {
-        const children = pages.some((child) => child.parent_id === page.id);
-        const open = !collapsed.has(page.id);
-        return (
-          <div key={page.id}>
-            <div
-              className={`tree-row ${current === page.id ? 'selected' : ''}`}
-              style={{ paddingLeft: 9 + depth * 13 }}
-            >
-              <button
-                className="tree-toggle"
-                disabled={!children}
-                aria-label={`${open ? '收起' : '展开'} ${page.title}`}
-                aria-expanded={children ? open : undefined}
-                onClick={() =>
-                  setCollapsed((previous) => {
-                    const next = new Set(previous);
-                    if (open) next.add(page.id);
-                    else next.delete(page.id);
-                    return next;
-                  })
-                }
-              >
-                {children ? (
-                  open ? (
-                    <ChevronDown size={12} />
-                  ) : (
-                    <ChevronRight size={12} />
-                  )
-                ) : (
-                  <span style={{ width: 12 }} />
-                )}
-              </button>
-              <Link className="tree-link" to={`/w/${wid}/p/${page.id}`} title={page.title}>
-                <FileText size={13} />
-                <span>{page.title}</span>
-              </Link>
-              {writable && (
-                <button
-                  className="icon-btn"
-                  onClick={() => onManage(page)}
-                  aria-label={`管理 ${page.title}`}
-                >
-                  <MoreHorizontal size={13} />
-                </button>
-              )}
-            </div>
-            {children && open && level(page.id, depth + 1)}
-          </div>
-        );
-      });
-  }
+  onManage: (page: PageSummary) => void;
+}
+function TreeNode({
+  page,
+  depth,
+  ...props
+}: TreeProps & { page: PageSummary; depth: number }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <div
+        className={`tree-row ${props.current === page.id ? 'selected' : ''}`}
+        style={{ paddingLeft: 9 + depth * 13 }}
+      >
+        <button
+          className="tree-toggle"
+          disabled={!page.has_children}
+          aria-label={`${open ? '收起' : '展开'} ${page.title}`}
+          aria-expanded={page.has_children ? open : undefined}
+          onClick={() => setOpen(!open)}
+        >
+          {page.has_children ? (
+            open ? (
+              <ChevronDown size={12} />
+            ) : (
+              <ChevronRight size={12} />
+            )
+          ) : (
+            <span style={{ width: 12 }} />
+          )}
+        </button>
+        <Link className="tree-link" to={`/w/${props.wid}/p/${page.id}`} title={page.title}>
+          <FileText size={13} />
+          <span>{page.title}</span>
+        </Link>
+        {props.writable && (
+          <button
+            className="icon-btn"
+            onClick={() => props.onManage(page)}
+            aria-label={`管理 ${page.title}`}
+          >
+            <MoreHorizontal size={13} />
+          </button>
+        )}
+      </div>
+      {open && page.has_children && <TreeBranch {...props} parent={page} depth={depth + 1} />}
+    </div>
+  );
+}
+function TreeBranch({
+  parent,
+  depth = 0,
+  ...props
+}: TreeProps & { parent?: PageSummary; depth?: number }) {
+  const query = usePageTree(props.wid, parent?.id);
+  const pages = query.data?.pages.flatMap((batch) => batch.items) || [];
   return (
     <>
-      {level(null)}
-      {pages.length === 0 && (
-        <div style={{ padding: '14px 19px', fontSize: 10, color: '#779484', lineHeight: 1.9 }}>
+      {query.isPending && <Loading />}
+      <ErrorNotice error={query.error} />
+      {query.error && (
+        <button className="button small" onClick={() => query.refetch()}>
+          重新加载目录
+        </button>
+      )}
+      {pages.map((page) => (
+        <TreeNode key={page.id} {...props} page={page} depth={depth} />
+      ))}
+      {query.hasNextPage && (
+        <button
+          className="button small"
+          style={{ margin: '8px 12px' }}
+          aria-label={parent ? `加载更多 ${parent.title} 的子文档` : '加载更多根文档'}
+          disabled={query.isFetchingNextPage}
+          onClick={() => query.fetchNextPage()}
+        >
+          {query.isFetchingNextPage ? '正在加载…' : '加载更多'}
+        </button>
+      )}
+      {!query.isPending && !query.error && !pages.length && !parent && (
+        <div style={{ padding: '14px 19px', fontSize: 10, color: '#779484' }}>
           还没有文档。
-          <br />
-          {writable && (
-            <button style={{ color: '#b5d7bd', marginTop: 7 }} onClick={() => onCreate()}>
-              创建第一篇文档 <ArrowRight size={10} style={{ display: 'inline', marginLeft: 3 }} />
-            </button>
-          )}
         </div>
       )}
     </>
@@ -143,7 +143,7 @@ export function PageDialog({
   onSaved,
 }: {
   wid: string;
-  pages: Page[];
+  pages: PageSummary[];
   page?: Page;
   parent?: string;
   onClose: () => void;
@@ -151,6 +151,16 @@ export function PageDialog({
 }) {
   const client = useQueryClient();
   const toast = useToast();
+  const summaries = usePageSummaries(wid);
+  const [selectedParent, setSelectedParent] = useState(page?.parent_id || parent || '');
+  const candidates = [
+    ...new Map(
+      [...pages, ...(summaries.data?.pages.flatMap((batch) => batch.items) || [])].map(
+        (item) => [item.id, item],
+      ),
+    ).values(),
+  ];
+  const parents = availableParents(candidates, page?.id);
   const mutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       page
@@ -158,7 +168,10 @@ export function PageDialog({
             method: 'PATCH',
             body: { ...body, version: page.version },
           })
-        : api<Page>(`/workspaces/${wid}/pages`, { method: 'POST', body: { ...body, content: '' } }),
+        : api<Page>(`/workspaces/${wid}/pages`, {
+            method: 'POST',
+            body: { ...body, content: '' },
+          }),
     onSuccess: (saved) => {
       client.setQueryData(['page', saved.id], saved);
       client.invalidateQueries({ queryKey: ['pages', wid] });
@@ -200,14 +213,33 @@ export function PageDialog({
         </label>
         <label className="field">
           <span>上级文档</span>
-          <select name="parent_id" defaultValue={page?.parent_id || parent || ''}>
+          <select
+            name="parent_id"
+            value={selectedParent}
+            onChange={(event) => setSelectedParent(event.target.value)}
+          >
             <option value="">空间根目录</option>
-            {availableParents(pages, page?.id).map((item) => (
+            {selectedParent && !parents.some((item) => item.id === selectedParent) && (
+              <option value={selectedParent}>当前上级（未加载）</option>
+            )}
+            {parents.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.title}
               </option>
             ))}
           </select>
+          <small>候选文档按标题分批加载；当前上级会保留。</small>
+          {summaries.hasNextPage && (
+            <button
+              type="button"
+              className="button small"
+              disabled={summaries.isFetchingNextPage}
+              onClick={() => summaries.fetchNextPage()}
+            >
+              加载更多上级文档
+            </button>
+          )}
+          <ErrorNotice error={summaries.error} />
         </label>
         <label className="field">
           <span>标签</span>
@@ -239,12 +271,18 @@ function SearchDialog({ wid, onClose }: { wid: string; onClose: () => void }) {
     const timer = setTimeout(() => setQ(input.trim()), 250);
     return () => clearTimeout(timer);
   }, [input]);
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ['search', wid, q],
-    queryFn: ({ signal }) =>
-      api<(Page & { rank: number })[]>(`/workspaces/${wid}/search?q=${encodeURIComponent(q)}`, {
-        signal,
-      }),
+    initialPageParam: 0,
+    getNextPageParam: (last: (Page & { rank: number })[], batches) =>
+      last.length === PAGE_BATCH_SIZE ? batches.length * PAGE_BATCH_SIZE : undefined,
+    queryFn: ({ signal, pageParam }) =>
+      api<(Page & { rank: number })[]>(
+        `/workspaces/${wid}/search?q=${encodeURIComponent(q)}&limit=${PAGE_BATCH_SIZE}&offset=${pageParam}`,
+        {
+          signal,
+        },
+      ),
     enabled: !!q,
   });
   return (
@@ -262,8 +300,8 @@ function SearchDialog({ wid, onClose }: { wid: string; onClose: () => void }) {
         <Loading text="搜索中…" />
       ) : query.error ? (
         <ErrorNotice error={query.error} />
-      ) : q && query.data?.length ? (
-        query.data.map((page) => (
+      ) : q && query.data?.pages.some((batch) => batch.length) ? (
+        query.data.pages.flat().map((page) => (
           <Link
             key={page.id}
             className="search-result"
@@ -282,6 +320,15 @@ function SearchDialog({ wid, onClose }: { wid: string; onClose: () => void }) {
           {q ? '没有匹配的文档，试试其他关键词。' : '搜索标题与正文，让答案更近一点。'}
         </div>
       )}
+      {query.hasNextPage && (
+        <button
+          className="button"
+          disabled={query.isFetchingNextPage}
+          onClick={() => query.fetchNextPage()}
+        >
+          加载更多搜索结果
+        </button>
+      )}
       <div className="search-hint" style={{ paddingBottom: 0, fontSize: 9 }}>
         按 ESC 关闭 &nbsp;·&nbsp; 空间内的搜索结果遵循你的访问权限
       </div>
@@ -297,7 +344,7 @@ function Dashboard({
 }: {
   user: User;
   workspace: Workspace;
-  pages: Page[];
+  pages: PageSummary[];
   writable: boolean;
   onCreate: () => void;
 }) {
@@ -324,7 +371,9 @@ function Dashboard({
       </div>
       <div className="welcome-banner">
         <h2>让每一份经验，都有迹可循。</h2>
-        <p>写下想法，连接知识。在文档中输入 [[文档标题]]，把零散的信息织成团队共同的知识网络。</p>
+        <p>
+          写下想法，连接知识。在文档中输入 [[文档标题]]，把零散的信息织成团队共同的知识网络。
+        </p>
       </div>
       <div className="stat-row">
         <div className="stat">
@@ -333,7 +382,7 @@ function Dashboard({
           </span>
           <div>
             <strong>{pages.length}</strong>
-            <small>知识文档</small>
+            <small>已加载文档</small>
           </div>
         </div>
         <div className="stat">
@@ -342,7 +391,7 @@ function Dashboard({
           </span>
           <div>
             <strong>{pages.filter((page) => !page.parent_id).length}</strong>
-            <small>主题目录</small>
+            <small>已加载根文档</small>
           </div>
         </div>
         <div className="stat">
@@ -351,12 +400,12 @@ function Dashboard({
           </span>
           <div>
             <strong>{tags.size}</strong>
-            <small>知识标签</small>
+            <small>已加载标签</small>
           </div>
         </div>
       </div>
       <div className="section-heading">
-        最近更新<span>每一次记录，都有价值</span>
+        已加载文档<span>按标题分批加载，数量仅代表当前已加载部分</span>
       </div>
       {recent.length ? (
         <div className="page-cards">
@@ -366,10 +415,7 @@ function Dashboard({
                 <FileText size={17} />
               </div>
               <h3>{page.title}</h3>
-              <p>
-                {page.content.replace(/[#*`>\[\]]/g, '').slice(0, 100) ||
-                  '一张空白的画布，等待新的想法。'}
-              </p>
+              <p>{page.tags.length ? page.tags.join(' · ') : '打开文档，阅读团队知识。'}</p>
               <footer>
                 <span>{date(page.updated_at)}</span>
                 <span>v{page.version} &nbsp;↗</span>
@@ -393,7 +439,15 @@ function Dashboard({
     </div>
   );
 }
-export function WorkspaceApp({ user, workspaces }: { user: User; workspaces: Workspace[] }) {
+export function WorkspaceApp(props: { user: User; workspaces: Workspace[] }) {
+  const location = useLocation();
+  const route = location.pathname.split('/').filter(Boolean);
+  const wid = route[0] === 'w' ? route[1] : '';
+  const workspace = props.workspaces.find((item) => item.id === wid) || props.workspaces[0];
+  // Workspace-scoped dialogs and pending requests must not survive a space switch.
+  return <WorkspaceReady key={workspace.id} {...props} />;
+}
+function WorkspaceReady({ user, workspaces }: { user: User; workspaces: Workspace[] }) {
   const location = useLocation();
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -407,15 +461,43 @@ export function WorkspaceApp({ user, workspaces }: { user: User; workspaces: Wor
   const [search, setSearch] = useState(false);
   const [newSpace, setNewSpace] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [documentDialog, setDocumentDialog] = useState<{ page?: Page; parent?: string } | null>(
-    null,
-  );
+  const [documentDialog, setDocumentDialog] = useState<{
+    page?: Page;
+    parent?: string;
+  } | null>(null);
+  const managementRequest = useRef<AbortController | null>(null);
+  function cancelManagement() {
+    managementRequest.current?.abort();
+    managementRequest.current = null;
+  }
+  // Every dialog intent supersedes pending detail loads, including create and close.
+  function changeDocumentDialog(next: typeof documentDialog) {
+    cancelManagement();
+    setDocumentDialog(next);
+  }
+  useEffect(() => () => cancelManagement(), []);
+  async function managePage(summary: PageSummary) {
+    cancelManagement();
+    const request = new AbortController();
+    managementRequest.current = request;
+    try {
+      const page = await api<Page>(`/workspaces/${workspace.id}/pages/${summary.id}`, {
+        signal: request.signal,
+      });
+      if (!request.signal.aborted && managementRequest.current === request) {
+        changeDocumentDialog({ page });
+      }
+    } catch (error) {
+      if (!request.signal.aborted && managementRequest.current === request) {
+        toast(message(error), true);
+      }
+    } finally {
+      if (managementRequest.current === request) managementRequest.current = null;
+    }
+  }
   const writable = canWrite(workspace.role);
   const manageable = canManage(workspace.role);
-  const pages = useQuery({
-    queryKey: ['pages', workspace.id],
-    queryFn: () => api<Page[]>(`/workspaces/${workspace.id}/pages`),
-  });
+  const pages = usePageSummaries(workspace.id, !pid && view === 'home');
   const logout = useMutation({
     mutationFn: () => api('/auth/logout', { method: 'POST' }),
     onSuccess: () => {
@@ -442,7 +524,7 @@ export function WorkspaceApp({ user, workspaces }: { user: User; workspaces: Wor
     document.addEventListener('keydown', shortcut);
     return () => document.removeEventListener('keydown', shortcut);
   }, []);
-  const list = pages.data || [];
+  const list = pages.data?.pages.flatMap((batch) => batch.items) || [];
   const selected = list.find((page) => page.id === pid);
   const titles: Record<string, string> = {
     home: '空间概览',
@@ -513,7 +595,6 @@ export function WorkspaceApp({ user, workspaces }: { user: User; workspaces: Wor
             >
               <item.icon size={15} strokeWidth={1.7} />
               {item.label}
-              {item.key === 'home' && <span className="count">{list.length}</span>}
             </Link>
           ))}
         </nav>
@@ -523,7 +604,7 @@ export function WorkspaceApp({ user, workspaces }: { user: User; workspaces: Wor
           {writable && (
             <button
               className="icon-btn"
-              onClick={() => setDocumentDialog({})}
+              onClick={() => changeDocumentDialog({})}
               aria-label="新建文档"
             >
               <Plus size={15} />
@@ -531,18 +612,13 @@ export function WorkspaceApp({ user, workspaces }: { user: User; workspaces: Wor
           )}
         </div>
         <div className="page-tree">
-          {pages.isPending ? (
-            <Loading />
-          ) : (
-            <PageTree
-              pages={list}
-              current={pid}
-              wid={workspace.id}
-              writable={writable}
-              onCreate={(parent) => setDocumentDialog({ parent })}
-              onManage={(page) => setDocumentDialog({ page })}
-            />
-          )}
+          <TreeBranch
+            key={workspace.id}
+            current={pid}
+            wid={workspace.id}
+            writable={writable}
+            onManage={managePage}
+          />
         </div>
         <div className="sidebar-bottom">
           {manageable && (
@@ -622,7 +698,10 @@ export function WorkspaceApp({ user, workspaces }: { user: User; workspaces: Wor
             </div>
             <span className="badge neutral">{roleLabels[workspace.role]}</span>
             {writable && (
-              <button className="button small" onClick={() => setDocumentDialog({ parent: pid })}>
+              <button
+                className="button small"
+                onClick={() => changeDocumentDialog({ parent: pid })}
+              >
                 <Plus size={12} />
                 新建文档
               </button>
@@ -633,7 +712,7 @@ export function WorkspaceApp({ user, workspaces }: { user: User; workspaces: Wor
           </div>
         </header>
         <div className="main-body">
-          {pages.error ? (
+          {!pid && view === 'home' && pages.error ? (
             <Empty title="文档加载失败" description="空间暂时无法访问，请稍后重试。">
               <ErrorNotice error={pages.error} />
               <button className="button" onClick={() => pages.refetch()}>
@@ -648,8 +727,8 @@ export function WorkspaceApp({ user, workspaces }: { user: User; workspaces: Wor
                 workspace={workspace}
                 pages={list}
                 user={user}
-                onManage={(page) => setDocumentDialog({ page })}
-                onCreateChild={(page) => setDocumentDialog({ parent: page.id })}
+                onManage={(page) => changeDocumentDialog({ page })}
+                onCreateChild={(page) => changeDocumentDialog({ parent: page.id })}
               />
             </Suspense>
           ) : view === 'graph' ? (
@@ -672,28 +751,45 @@ export function WorkspaceApp({ user, workspaces }: { user: User; workspaces: Wor
           ) : pages.isPending ? (
             <Loading />
           ) : (
-            <Dashboard
-              user={user}
-              workspace={workspace}
-              pages={list}
-              writable={writable}
-              onCreate={() => setDocumentDialog({})}
-            />
+            <>
+              <Dashboard
+                user={user}
+                workspace={workspace}
+                pages={list}
+                writable={writable}
+                onCreate={() => changeDocumentDialog({})}
+              />
+              {pages.hasNextPage && (
+                <button
+                  className="button"
+                  style={{ margin: '0 32px 24px' }}
+                  disabled={pages.isFetchingNextPage}
+                  onClick={() => pages.fetchNextPage()}
+                >
+                  加载更多文档
+                </button>
+              )}
+            </>
           )}
         </div>
       </main>
       {search && (
-        <SearchDialog key={workspace.id} wid={workspace.id} onClose={() => setSearch(false)} />
+        <SearchDialog
+          key={workspace.id}
+          wid={workspace.id}
+          onClose={() => setSearch(false)}
+        />
       )}{' '}
       {newSpace && <NewWorkspace onClose={() => setNewSpace(false)} />}{' '}
       {importing && <ImportDialog wid={workspace.id} onClose={() => setImporting(false)} />}{' '}
       {documentDialog && (
         <PageDialog
+          key={`${workspace.id}:${documentDialog.page?.id || 'new'}:${documentDialog.parent || ''}`}
           wid={workspace.id}
           pages={list}
           page={documentDialog.page}
           parent={documentDialog.parent}
-          onClose={() => setDocumentDialog(null)}
+          onClose={() => changeDocumentDialog(null)}
           onSaved={openPage}
         />
       )}

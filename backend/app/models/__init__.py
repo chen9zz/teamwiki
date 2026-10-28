@@ -104,6 +104,7 @@ class Page(Base):
         ),
         CheckConstraint("version > 0", name="positive_version"),
         Index("ix_page_workspace_deleted", "workspace_id", "deleted_at"),
+        Index("ix_page_tree_order", "workspace_id", "parent_id", "deleted_at", "title", "id"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)

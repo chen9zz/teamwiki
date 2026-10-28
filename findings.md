@@ -10,3 +10,5 @@
 - All writes affecting pages, membership and job consumption acquire same workspace lock. This intentionally serializes workspace writes for deterministic tree/link consistency; reads remain concurrent. Perpage CAS still uses atomic WHERE version conditional UPDATE.
 - Tags stored as validated per-page JSON list rather than separate taxonomy tables (no independent tag-management requirements).
 - Imports bounded atomic transaction gives queued(0/N)->completed(N/N) visibility; intermediate per-file progress remains uncommitted.
+
+2026-10-28 v0.3: current ZIP import is flat despite UI wording; full import uses one atomic transaction. Frontend currently fetches at most 5000 pages and 200 revisions once. Existing CI is green on c2831b8.

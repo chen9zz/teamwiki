@@ -3,7 +3,7 @@
   "info": {
     "title": "TeamWiki",
     "description": "Tenant-scoped collaborative knowledge base. Sign in using /api/auth/login; the HttpOnly session cookie authenticates subsequent API calls. Page mutations require the currently observed version; stale saves return 409.",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "paths": {
     "/api/health": {
@@ -450,6 +450,153 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkspaceOutput"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/page-tree": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Page Tree",
+        "operationId": "page_tree_api_workspaces__workspace_id__page_tree_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "parent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 36
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageBatch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspace_id}/page-summaries": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Page Summaries",
+        "operationId": "page_summaries_api_workspaces__workspace_id__page_summaries_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageBatch"
                 }
               }
             }
@@ -1251,6 +1398,66 @@
         }
       }
     },
+    "/api/workspaces/{workspace_id}/pages/{page_id}/revisions/{revision_version}/links": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Revision Links",
+        "operationId": "revision_links_api_workspaces__workspace_id__pages__page_id__revisions__revision_version__links_get",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "page_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Page Id"
+            }
+          },
+          {
+            "name": "revision_version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Revision Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionLinkPreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspaces/{workspace_id}/pages/{page_id}/links": {
       "get": {
         "tags": [
@@ -1737,6 +1944,37 @@
         ],
         "title": "MemberUpdate"
       },
+      "PageBatch": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PageSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "title": "PageBatch"
+      },
       "PageCreate": {
         "properties": {
           "title": {
@@ -1869,6 +2107,65 @@
         ],
         "title": "PageOut"
       },
+      "PageSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "workspace_id": {
+            "type": "string",
+            "title": "Workspace Id"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "has_children": {
+            "type": "boolean",
+            "title": "Has Children"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "parent_id",
+          "title",
+          "tags",
+          "version",
+          "updated_at",
+          "has_children"
+        ],
+        "title": "PageSummary"
+      },
       "PageUpdate": {
         "properties": {
           "version": {
@@ -1935,6 +2232,42 @@
         ],
         "title": "PageUpdate"
       },
+      "PreviewLink": {
+        "properties": {
+          "raw_target": {
+            "type": "string",
+            "title": "Raw Target"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "unresolved",
+              "ambiguous",
+              "deleted"
+            ],
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "raw_target",
+          "target_id",
+          "state"
+        ],
+        "title": "PreviewLink"
+      },
       "RegisterInput": {
         "properties": {
           "email": {
@@ -1962,6 +2295,28 @@
           "name"
         ],
         "title": "RegisterInput"
+      },
+      "RevisionLinkPreview": {
+        "properties": {
+          "resolution": {
+            "type": "string",
+            "const": "current_workspace",
+            "title": "Resolution"
+          },
+          "outgoing": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewLink"
+            },
+            "type": "array",
+            "title": "Outgoing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "resolution",
+          "outgoing"
+        ],
+        "title": "RevisionLinkPreview"
       },
       "RevisionOut": {
         "properties": {

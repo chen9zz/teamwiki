@@ -4,7 +4,7 @@ TeamWiki 是面向小团队的协作知识库，帮助团队把零散的 Markdow
 
 技术栈：Python 3.12、FastAPI、SQLAlchemy 2.0 异步 ORM、PostgreSQL 17、Redis 7、Celery、React、TypeScript、CodeMirror、Tailwind CSS、Cytoscape 与 Prometheus Client。
 
-当前版本 **0.2.0**：已实际构建并启动 Docker Compose；默认两个 API 进程、独立缓存和任务队列 Redis、有界连接池，以及普通文档保存的共享锁和来源页面增量链接索引。推荐方案、对照基准和容量边界见 [并发方案](docs/concurrency.md)，容器启动与运维见 [Docker 交付](docs/docker.md)。
+当前版本 **0.3.0**：ZIP 导入会还原目录层级；目录树、父页子文档、历史和搜索按批加载，目录列表只读取元数据；Playwright Chromium 对编译后的完整 Docker 栈执行真实浏览器回归。保留两个 API 进程、独立缓存/队列 Redis、有界连接池、乐观锁和事务 Outbox。详见 [v0.3 行为与验收](docs/v0.3.md)、[并发方案](docs/concurrency.md) 和 [Docker 交付](docs/docker.md)。
 
 ![TeamWiki 工作台](docs/assets/workspace.png)
 
@@ -38,7 +38,7 @@ python3 scripts/seed.py --url http://localhost:8080
 | --- | --- | --- |
 | Phase 1：可用知识库 | 注册、登录、撤销会话；多工作区与四级角色；邮箱绑定邀请；页面树、Markdown 编辑/预览、标签、软删除和恢复 | 已实现，真实 PostgreSQL HTTP 测试及浏览器流程验证 |
 | Phase 2：协作与知识关联 | 版本条件更新和 409 冲突；完整修订快照与历史恢复；标题/固定 ID 链接、反向链接、图谱；全文搜索和版本缓存 | 已实现，并发保存、租户边界、链接身份、缓存故障/旧版本回填均有验证 |
-| Phase 3：可靠导入与交付 | 有界 Markdown/ZIP 导入；事务 Outbox、Celery 幂等消费与滞留恢复；审计、导出；迁移、种子数据、Locust、Compose 和 CI 配置 | 已实现，真实 Redis/Worker/Beat 链路、重复投递及 Docker 完整容器联调通过；远程 CI 的后端、前端与完整 Compose 三项任务通过 |
+| Phase 3：可靠导入与交付 | 有界层级 Markdown/ZIP 导入；事务 Outbox、Celery 幂等消费与滞留恢复；审计、导出；迁移、种子数据、Locust、Compose 和 CI | 已实现，本机完整容器及真实 Chromium 验收；[GitHub CI](https://github.com/chen9zz/teamwiki/actions/workflows/ci.yml) 包含后端、前端及完整容器/浏览器三项任务 |
 
 所有空间成员都能阅读该空间的全部页面；editor 及以上可写；admin/owner 可管理导入和查看审计。只有 owner 能管理 admin，owner 不能被移除或降级。邀请 token 绑定邮箱、有效期和单次使用状态，用户自行分享邀请链接。
 
@@ -163,6 +163,10 @@ npm ci
 npm test
 npm run build
 
+# 真实浏览器：先在项目根目录启动完整 Compose 栈，再在 frontend/ 执行。
+npx playwright install --with-deps chromium
+E2E_BASE_URL=http://127.0.0.1:8080 npm run test:e2e
+
 # 在项目根目录启动 API 并 seed 后执行：
 .venv/bin/locust -f scripts/locustfile.py --headless -u 10 -r 2 -t 30s \
   --host http://localhost:8000 --csv work/locust
@@ -170,14 +174,14 @@ npm run build
 
 本次已确认：
 
-- 真实 PostgreSQL 后端测试 **77 项通过**，覆盖权限/IDOR、会话撤销、原子保存/恢复、并发竞争、链接、缓存、危险 ZIP 和可靠导入。
+- v0.3 真实 PostgreSQL 后端测试 **106 项通过**，覆盖权限/IDOR、会话撤销、原子保存/恢复、并发竞争、链接、缓存、危险 ZIP、层级导入、元数据分页和历史预览隔离。前端及浏览器结果见 [v0.3 验收](docs/v0.3.md)。
 - 显式 Alembic `upgrade → downgrade → upgrade` 通过，系统目录确认生成全文列、GIN 索引和复合外键。
 - 真实 Redis 缓存填充、旧键驱逐、延迟旧键回填以及删除后拒绝缓存读取通过。
 - API → Outbox → Redis → Celery Worker/Beat 导入通过；重复请求和两次重复任务投递仍只有一篇导入页。
 - 10 用户短时 Locust 检查完成 **991 请求、0 失败**，其中明确验证了 103 次预期 409。小样例、本机单进程结果不能作为生产容量承诺。
 - 20,000 篇合成页面上的实际搜索计划自然使用 GIN，此次完整字段查询执行约 0.107 ms。
 
-已通过本机 ARM64 Docker 引擎实际构建、启动完整容器栈，验证前端、迁移、两进程 API、Celery 导入、版本冲突、租户隔离、缓存中断降级和队列重启恢复。CI 增加完整 Compose 构建/启动/冒烟检查；首次远程 GitHub Actions 三项任务均通过（[公开运行记录](https://github.com/chen9zz/teamwiki/actions/runs/40275391284)）：后端 77 项测试、前端 13 项测试及编译产物回归、AMD64 完整 Compose 构建/启动/冒烟与异步导入。前端13项测试、类型检查和生产构建通过，新增实际编译产物的文档→CodeMirror→预览回归，并纳入镜像构建和CI。
+v0.2 阶段已通过本机 ARM64 Docker 完整容器栈的故障与恢复检查，并在[首次远程 GitHub Actions](https://github.com/chen9zz/teamwiki/actions/runs/40275391284) 通过后端 77 项、前端 13 项及 AMD64 容器联调。v0.3 在此基础上增加层级导入、分页回归与真实 Chromium 工作流；当前结果见 [v0.3 验收](docs/v0.3.md)，所有远程执行可查看 [GitHub Actions](https://github.com/chen9zz/teamwiki/actions/workflows/ci.yml)。
 
 在相同原生环境、两个 API 进程、100篇固定小文档、16个请求流、每场景10秒的对照中，不同文档保存从136.390提升至764.940请求/秒，P95从138.778降至32.144毫秒；读取从738.892至753.711请求/秒。热点每批仍为一个成功、十五个409，历史连续。它只说明本次短测下的常规保存改善，不代表线上容量、长文档或长期稳定性。原始JSON及完整限制见 [并发验证](docs/concurrency.md)。
 
@@ -189,9 +193,10 @@ npm run build
 - 邀请由用户自行分享，不发送邮件；没有实时 CRDT、多人光标或自动内容合并。
 - `simple` 全文搜索不做中文分词、语义理解或向量检索，连续中文文本的搜索能力受词元边界限制。
 - 普通文档保存可以并行，但结构和权限变更仍在空间粒度串行协调；目标目录元数据查询仍随空间大小增长。下一步应测量大空间和结构密集写入，再决定目标索引、异步链接协议或更细锁粒度。
-- 导入是有界原子事务：上传最多 8 MiB、单文件最多 2 MiB、最多 200 个 Markdown 文件、展开最多 16 MiB，压缩比最多 100；拒绝危险路径、重复路径、符号链接、加密包和非 UTF-8。对外进度通常从 queued/0 直接到 completed/N，不保证可见的逐文件实时进度。
+- 导入是有界原子事务：上传最多 8 MiB、单文件最多 2 MiB、最多 200 个 Markdown 文件、200 个生成目录、目录最多 20 层、合计最多 400 页、展开最多 16 MiB，压缩比最多 100；拒绝危险路径、重复/大小写歧义路径、符号链接、加密包和非 UTF-8。目录创建为空白可编辑页，空目录不生成页；进度只统计 Markdown，通常从 queued/0 直接到 completed/N。
 - 单篇正文最多 1,000,000 字符，每页最多 24 个标签。删除有子页面的页面前须先移动或删除子页面。
-- 历史接口默认返回最新 200 条修订，可用 `offset` 分页；页面列表默认最多 5,000 项，搜索默认 50 项。前端不会无限加载所有历史。
+- 目录和摘要接口默认 50、最多 200 条/批；前端目录、子文档、历史与搜索每批 50 条，通过“加载更多”继续。兼容的完整正文列表 API 仍最多 5,000 条，图谱仍全量加载；回收站和审计保留原有列表边界。offset 分页在并发重命名/移动时不是一致性快照，可刷新重新加载。
+- 历史保存内容快照，没有单独保存历史关系图；历史预览的链接按当前空间元数据解析，并在界面标注，不改变当前 PageLink 索引。
 - 导出是正文 Markdown，不是完整数据库备份；ZIP 不包含成员、审计、历史和所有页面元数据。空间导出最多 2,000 页或 32 MiB 正文，完整备份须使用 `pg_dump`。
 
 ## 项目结构与文档
@@ -214,6 +219,7 @@ docker-compose.yml          postgres / redis-cache / redis-broker / migrate / ap
 - [实际验证记录与原始摘要](docs/verification.md)
 - [Docker 部署、资源与连接预算](docs/docker.md)
 - [推荐并发方案与对照基准](docs/concurrency.md)
+- [v0.3 层级导入、分页与真实浏览器验收](docs/v0.3.md)
 
 ## 可选的 Phase 4
 

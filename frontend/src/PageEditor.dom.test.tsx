@@ -18,8 +18,9 @@ vi.mock('./MarkdownEditor', () => ({
     />
   ),
 }));
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 afterEach(() => {
   sessionStorage.clear();
   document.body.replaceChildren();
@@ -44,6 +45,10 @@ it('retains unsaved content across SPA navigation and restores it in edit mode',
   };
   const client = new QueryClient({
     defaultOptions: { queries: { staleTime: Infinity, retry: false } },
+  });
+  client.setQueryData(['pages', workspace.id, 'tree', page.id], {
+    pages: [{ items: [], limit: 50, offset: 0, has_more: false }],
+    pageParams: [0],
   });
   client.setQueryData(['page', page.id], page);
   client.setQueryData(['links', page.id, page.version], { outgoing: [], backlinks: [] });
@@ -96,7 +101,9 @@ it('retains unsaved content across SPA navigation and restores it in edit mode',
     await act(async () => {
       edit!.click();
     });
-    const input = host.querySelector<HTMLTextAreaElement>('textarea[aria-label="测试文档正文"]');
+    const input = host.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="测试文档正文"]',
+    );
     expect(input).not.toBeNull();
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(

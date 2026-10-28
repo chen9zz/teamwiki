@@ -66,10 +66,22 @@ const page = {
   created_by: user.id,
   updated_by: user.id,
 };
+const summary = {
+  id: page.id,
+  workspace_id: page.workspace_id,
+  parent_id: page.parent_id,
+  title: page.title,
+  version: page.version,
+  updated_at: page.updated_at,
+  tags: page.tags,
+  has_children: false,
+};
+const batch = { items: [summary], limit: 50, offset: 0, has_more: false };
 const apiData = new Map([
   ['/api/auth/me', user],
   ['/api/workspaces', [workspace]],
-  [`/api/workspaces/${workspace.id}/pages`, [page]],
+  [`/api/workspaces/${workspace.id}/page-tree`, batch],
+  [`/api/workspaces/${workspace.id}/page-summaries`, batch],
   [`/api/workspaces/${workspace.id}/pages/${page.id}`, page],
   [`/api/workspaces/${workspace.id}/pages/${page.id}/links`, { outgoing: [], backlinks: [] }],
 ]);

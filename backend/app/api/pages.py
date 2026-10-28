@@ -7,15 +7,93 @@ import zipfile
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import select, text
+from sqlalchemy.orm import aliased
 
 from app.api.deps import DB, CurrentUser
 from app.db.base import utcnow
 from app.models import AuditLog, Page, PageLink, PageRevision
-from app.schemas.pages import PageCreate, PageOut, PageUpdate, RevisionOut, VersionInput
+from app.schemas.pages import (
+    PageBatch,
+    PageCreate,
+    PageOut,
+    PageUpdate,
+    RevisionLinkPreview,
+    RevisionOut,
+    VersionInput,
+)
 from app.services import pages as service
 from app.services.identity import MANAGERS, require_member
+from app.services.links import preview_revision_links
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["pages"])
+
+
+async def metadata_batch(db, workspace_id, limit, offset, *, parent_id=None, tree=False):
+    child = aliased(Page)
+    has_children = (
+        select(child.id)
+        .where(
+            child.workspace_id == workspace_id,
+            child.parent_id == Page.id,
+            child.deleted_at.is_(None),
+        )
+        .exists()
+        .label("has_children")
+    )
+    query = select(
+        Page.id,
+        Page.workspace_id,
+        Page.parent_id,
+        Page.title,
+        Page.tags,
+        Page.version,
+        Page.updated_at,
+        has_children,
+    ).where(Page.workspace_id == workspace_id, Page.deleted_at.is_(None))
+    if tree:
+        query = query.where(Page.parent_id == parent_id)
+    rows = (
+        (await db.execute(query.order_by(Page.title, Page.id).offset(offset).limit(limit + 1)))
+        .mappings()
+        .all()
+    )
+    return {"items": rows[:limit], "limit": limit, "offset": offset, "has_more": len(rows) > limit}
+
+
+@router.get("/page-tree", response_model=PageBatch)
+async def page_tree(
+    workspace_id: str,
+    db: DB,
+    user: CurrentUser,
+    parent_id: str | None = Query(None, max_length=36),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    await require_member(db, workspace_id, user.id)
+    if parent_id is not None:
+        # Validate only the ID: even opening a branch must not fetch its body.
+        parent = await db.scalar(
+            select(Page.id).where(
+                Page.workspace_id == workspace_id,
+                Page.id == parent_id,
+                Page.deleted_at.is_(None),
+            )
+        )
+        if parent is None:
+            raise HTTPException(404, "Page not found")
+    return await metadata_batch(db, workspace_id, limit, offset, parent_id=parent_id, tree=True)
+
+
+@router.get("/page-summaries", response_model=PageBatch)
+async def page_summaries(
+    workspace_id: str,
+    db: DB,
+    user: CurrentUser,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    await require_member(db, workspace_id, user.id)
+    return await metadata_batch(db, workspace_id, limit, offset)
 
 
 @router.get("/pages", response_model=list[PageOut])
@@ -269,6 +347,13 @@ async def restore_revision(
     workspace_id: str, page_id: str, revision_version: int, data: VersionInput, db: DB, user: CurrentUser
 ):
     return await service.restore_revision(db, workspace_id, page_id, revision_version, user.id, data.version)
+
+
+@router.get("/pages/{page_id}/revisions/{revision_version}/links", response_model=RevisionLinkPreview)
+async def revision_links(
+    workspace_id: str, page_id: str, revision_version: int, db: DB, user: CurrentUser
+):
+    return await preview_revision_links(db, workspace_id, page_id, revision_version, user.id)
 
 
 @router.get("/pages/{page_id}/links")

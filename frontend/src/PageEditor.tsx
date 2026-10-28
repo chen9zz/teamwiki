@@ -1,5 +1,10 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowDownToLine,
@@ -31,9 +36,18 @@ import {
 } from 'lucide-react';
 import { api, ApiError, download, message } from './api';
 import { canWrite, date, headingList } from './lib';
-import type { Links, Page, Revision, User, Workspace } from './types';
+import type {
+  Links,
+  Page,
+  PageSummary,
+  Revision,
+  RevisionLinks,
+  User,
+  Workspace,
+} from './types';
 import { Empty, ErrorNotice, Loading, Modal, useToast } from './ui';
 import { Markdown } from './Markdown';
+import { PAGE_BATCH_SIZE, usePageTree } from './pagination';
 
 const MarkdownEditor = lazy(() => import('./MarkdownEditor'));
 
@@ -57,34 +71,53 @@ function readDraft(key: string): Draft | null {
 }
 function Versions({
   page,
-  pages,
   writable,
   onClose,
   onRestore,
 }: {
   page: Page;
-  pages: Page[];
   writable: boolean;
   onClose: () => void;
   onRestore: (page: Page) => void;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
-  const history = useQuery({
-    queryKey: ['revisions', page.id],
-    queryFn: () => api<Revision[]>(`/workspaces/${page.workspace_id}/pages/${page.id}/revisions`),
+  const history = useInfiniteQuery({
+    queryKey: ['revisions', page.id, page.version],
+    initialPageParam: 0,
+    queryFn: ({ pageParam, signal }) =>
+      api<Revision[]>(
+        `/workspaces/${page.workspace_id}/pages/${page.id}/revisions?limit=${PAGE_BATCH_SIZE}&offset=${pageParam}`,
+        { signal },
+      ),
+    getNextPageParam: (last, batches) =>
+      last.length === PAGE_BATCH_SIZE ? batches.length * PAGE_BATCH_SIZE : undefined,
   });
   const detail = useQuery({
     queryKey: ['revision', page.id, selected],
     queryFn: () =>
-      api<Revision>(`/workspaces/${page.workspace_id}/pages/${page.id}/revisions/${selected}`),
+      api<Revision>(
+        `/workspaces/${page.workspace_id}/pages/${page.id}/revisions/${selected}`,
+      ),
+    enabled: selected !== null,
+  });
+  const historicalLinks = useQuery({
+    queryKey: ['revision-links', page.workspace_id, page.id, selected],
+    queryFn: ({ signal }) =>
+      api<RevisionLinks>(
+        `/workspaces/${page.workspace_id}/pages/${page.id}/revisions/${selected}/links`,
+        { signal },
+      ),
     enabled: selected !== null,
   });
   const restore = useMutation({
     mutationFn: (version: number) =>
-      api<Page>(`/workspaces/${page.workspace_id}/pages/${page.id}/revisions/${version}/restore`, {
-        method: 'POST',
-        body: { version: page.version },
-      }),
+      api<Page>(
+        `/workspaces/${page.workspace_id}/pages/${page.id}/revisions/${version}/restore`,
+        {
+          method: 'POST',
+          body: { version: page.version },
+        },
+      ),
     onSuccess: (restored) => {
       onRestore(restored);
       onClose();
@@ -98,7 +131,7 @@ function Versions({
       {history.isPending ? <Loading /> : <ErrorNotice error={history.error} />}
       <div className="revision-list">
         {history.data &&
-          [...history.data]
+          [...history.data.pages.flat()]
             .sort((a, b) => b.version - a.version)
             .map((revision) => (
               <div
@@ -116,7 +149,10 @@ function Versions({
                     {revision.title} · {date(revision.created_at, true)}
                   </small>
                 </button>
-                <button className="button small" onClick={() => setSelected(revision.version)}>
+                <button
+                  className="button small"
+                  onClick={() => setSelected(revision.version)}
+                >
                   查看
                 </button>
                 {writable && revision.version !== page.version && (
@@ -131,6 +167,16 @@ function Versions({
               </div>
             ))}
       </div>
+      {history.hasNextPage && (
+        <button
+          className="button"
+          aria-label="加载更早版本"
+          disabled={history.isFetchingNextPage}
+          onClick={() => history.fetchNextPage()}
+        >
+          加载更早版本
+        </button>
+      )}
       {detail.isFetching ? (
         <Loading />
       ) : (
@@ -139,7 +185,16 @@ function Versions({
             <div style={{ fontSize: 10, color: '#8da27c', marginBottom: 15 }}>
               版本 {detail.data.version} · {detail.data.title}
             </div>
-            <Markdown content={detail.data.content} pages={pages} wid={page.workspace_id} />
+            <p style={{ fontSize: 10, color: '#8da27c' }}>链接按当前空间解析</p>
+            {historicalLinks.isPending ? (
+              <Loading text="正在解析历史链接…" />
+            ) : (
+              <Markdown
+                content={detail.data.content}
+                links={historicalLinks.data?.outgoing || []}
+                wid={page.workspace_id}
+              />
+            )}
             {writable && detail.data.version !== page.version && (
               <div className="modal-actions">
                 <button
@@ -155,7 +210,7 @@ function Versions({
           </div>
         )
       )}
-      <ErrorNotice error={detail.error || restore.error} />
+      <ErrorNotice error={detail.error || historicalLinks.error || restore.error} />
     </Modal>
   );
 }
@@ -169,7 +224,7 @@ export function PageEditor({
 }: {
   pid: string;
   workspace: Workspace;
-  pages: Page[];
+  pages: PageSummary[];
   user: User;
   onManage: (page: Page) => void;
   onCreateChild: (page: Page) => void;
@@ -228,7 +283,7 @@ function EditorReady({
 }: {
   page: Page;
   workspace: Workspace;
-  pages: Page[];
+  pages: PageSummary[];
   user: User;
   onManage: (page: Page) => void;
   onCreateChild: (page: Page) => void;
@@ -256,7 +311,6 @@ function EditorReady({
   const headings = headingList(mode === 'edit' ? draft.content : page.content);
   const chars = (mode === 'edit' ? draft.content : page.content).length;
   const reading = Math.max(1, Math.ceil(chars / 450));
-  const descendantCount = pages.filter((item) => item.parent_id === page.id).length;
   const scrollRef = useRef<HTMLDivElement>(null);
   function accepted(saved: Page) {
     setDraft({ title: saved.title, content: saved.content, version: saved.version });
@@ -372,7 +426,9 @@ function EditorReady({
         <div className="document-scroll" ref={scrollRef}>
           <article className="document-width">
             <div className="doc-eyebrow">
-              <span style={{ width: 5, height: 5, background: '#92ac7c', borderRadius: '50%' }} />
+              <span
+                style={{ width: 5, height: 5, background: '#92ac7c', borderRadius: '50%' }}
+              />
               TEAM KNOWLEDGE BASE{' '}
               <span style={{ letterSpacing: 0, marginLeft: 'auto', fontSize: 9 }}>
                 文档 /{' '}
@@ -381,11 +437,24 @@ function EditorReady({
                   : '知识库'}
               </span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
               <div className="doc-icon">
                 <FileText size={24} strokeWidth={1.4} />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, position: 'relative' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  position: 'relative',
+                }}
+              >
                 <button
                   className="icon-btn"
                   onClick={() => setHistory(true)}
@@ -530,7 +599,9 @@ function EditorReady({
               <div className="doc-status">
                 {dirty ? (
                   <>
-                    <span style={{ width: 4, height: 4, borderRadius: 5, background: '#c4a66c' }} />
+                    <span
+                      style={{ width: 4, height: 4, borderRadius: 5, background: '#c4a66c' }}
+                    />
                     有未保存修改
                   </>
                 ) : (
@@ -600,7 +671,9 @@ function EditorReady({
                   <Suspense fallback={<Loading text="正在准备编辑器…" />}>
                     <MarkdownEditor
                       value={draft.content}
-                      onChange={(content) => setDraft((previous) => ({ ...previous, content }))}
+                      onChange={(content) =>
+                        setDraft((previous) => ({ ...previous, content }))
+                      }
                     />
                   </Suspense>
                 </div>
@@ -624,22 +697,7 @@ function EditorReady({
                 </div>
               </>
             )}
-            {descendantCount > 0 && mode === 'read' && (
-              <div style={{ borderTop: '1px solid #e4eadd', marginTop: 35, paddingTop: 23 }}>
-                <div className="section-heading">
-                  子文档<span>{descendantCount} 篇</span>
-                </div>
-                {pages
-                  .filter((item) => item.parent_id === page.id)
-                  .map((item) => (
-                    <Link key={item.id} className="backlink" to={`/w/${workspace.id}/p/${item.id}`}>
-                      <FileText size={14} />
-                      <span style={{ flex: 1 }}>{item.title}</span>
-                      <ArrowUpRight size={12} />
-                    </Link>
-                  ))}
-              </div>
-            )}
+            {mode === 'read' && <ChildPages wid={workspace.id} pid={page.id} />}
           </article>
         </div>
         <footer className="doc-footer">
@@ -741,7 +799,8 @@ function EditorReady({
                 </Link>
               ) : (
                 <div key={link.id} className="rail-hint" style={{ marginBottom: 7 }}>
-                  {link.raw_target} <span className="badge warning">{stateLabels[link.state]}</span>
+                  {link.raw_target}{' '}
+                  <span className="badge warning">{stateLabels[link.state]}</span>
                 </div>
               ),
             )}
@@ -798,7 +857,6 @@ function EditorReady({
       {history && (
         <Versions
           page={page}
-          pages={pages}
           writable={writable}
           onClose={() => setHistory(false)}
           onRestore={(restored) => {
@@ -867,5 +925,41 @@ function EditorReady({
         </Modal>
       )}
     </>
+  );
+}
+
+function ChildPages({ wid, pid }: { wid: string; pid: string }) {
+  const query = usePageTree(wid, pid);
+  const children = query.data?.pages.flatMap((batch) => batch.items) || [];
+  if (query.isPending) return <Loading text="正在加载子文档…" />;
+  if (!children.length && !query.error) return null;
+  return (
+    <section style={{ borderTop: '1px solid #e4eadd', marginTop: 35, paddingTop: 23 }}>
+      <div className="section-heading">
+        子文档<span>已加载 {children.length} 篇</span>
+      </div>
+      <ErrorNotice error={query.error} />
+      {query.error && (
+        <button className="button small" onClick={() => query.refetch()}>
+          重新加载子文档
+        </button>
+      )}
+      {children.map((item) => (
+        <Link key={item.id} className="backlink" to={`/w/${wid}/p/${item.id}`}>
+          <FileText size={14} />
+          <span style={{ flex: 1 }}>{item.title}</span>
+          <ArrowUpRight size={12} />
+        </Link>
+      ))}
+      {query.hasNextPage && (
+        <button
+          className="button small"
+          disabled={query.isFetchingNextPage}
+          onClick={() => query.fetchNextPage()}
+        >
+          加载更多子文档
+        </button>
+      )}
+    </section>
   );
 }
