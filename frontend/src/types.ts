@@ -15,6 +15,7 @@ export interface Page {
   parent_id: string | null;
   title: string;
   content: string;
+  search_index_truncated?: boolean;
   tags: string[];
   version: number;
   deleted_at: string | null;

@@ -219,6 +219,25 @@ it('loads search results beyond the first batch', async () => {
   expect(button(host, '加载更多搜索结果')).toBeUndefined();
 });
 
+it('marks search results whose Chinese body index is truncated', async () => {
+  vi.stubGlobal('fetch', async (input: string) => input.includes('/search?')
+    ? Response.json([{ ...page('long-result', '超长中文文档'), rank: 1, search_index_truncated: true }, { ...page('short-result', '普通中文文档'), rank: 1, search_index_truncated: false }])
+    : Response.json({ items: [], limit: 50, offset: 0, has_more: false }));
+  const host = await render(<WorkspaceApp user={user} workspaces={[workspace]} />);
+  await act(async () => host.querySelector<HTMLButtonElement>('.nav-search')!.click());
+  const input = host.querySelector<HTMLInputElement>('input[aria-label="搜索文档"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '中文');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  });
+  await settle();
+  const results = host.querySelectorAll('.search-result');
+  expect(results).toHaveLength(2);
+  expect(results[0].querySelector('[aria-label="中文正文索引范围有限"]')).not.toBeNull();
+  expect(results[1].querySelector('[aria-label="中文正文索引范围有限"]')).toBeNull();
+});
+
 it.each(['success', 'failure'])(
   'discards a late management %s after switching workspaces',
   async (outcome) => {

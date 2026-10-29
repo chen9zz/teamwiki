@@ -2,9 +2,9 @@
 
 TeamWiki 是面向小团队的协作知识库，帮助团队把零散的 Markdown 文档、项目决策和经验整理成可查找、可追溯的知识网络。它也是一个可运行的 Python 全栈项目，重点展示租户隔离、并发写入一致性和后台任务可靠性。
 
-技术栈：Python 3.12、FastAPI、SQLAlchemy 2.0 异步 ORM、PostgreSQL 17、Redis 7、Celery、React、TypeScript、CodeMirror、Tailwind CSS、Cytoscape 与 Prometheus Client。
+技术栈：Python 3.12、FastAPI、SQLAlchemy 2.0 异步 ORM、PostgreSQL 17、Redis 7、Celery、React、TypeScript、CodeMirror、Tailwind CSS、Cytoscape、jieba 与 Prometheus Client。
 
-当前版本 **0.3.0**：ZIP 导入会还原目录层级；目录树、父页子文档、历史和搜索按批加载，目录列表只读取元数据；Playwright Chromium 对编译后的完整 Docker 栈执行真实浏览器回归。保留两个 API 进程、独立缓存/队列 Redis、有界连接池、乐观锁和事务 Outbox。详见 [v0.3 行为与验收](docs/v0.3.md)、[并发方案](docs/concurrency.md) 和 [Docker 交付](docs/docker.md)。
+当前版本 **0.4.0**：支持中文及中英混合全文检索，已有页面通过迁移回填；新增可往返的 TeamWiki ZIP，保留目录、标题、标签和归档内已绑定链接身份。目录和历史按批加载，Playwright Chromium 对编译后的完整 Docker 栈执行真实回归。保留两个 API 进程、独立缓存/队列 Redis、有界连接池、乐观锁和事务 Outbox。详见 [v0.4 行为与验收](docs/v0.4.md)、[并发方案](docs/concurrency.md) 和 [Docker 交付](docs/docker.md)。
 
 ![TeamWiki 工作台](docs/assets/workspace.png)
 
@@ -48,7 +48,7 @@ python3 scripts/seed.py --url http://localhost:8080
 | --- | --- |
 | FastAPI / Pydantic | 清晰的请求验证、异步 HTTP 接口及自动 OpenAPI 文档 |
 | SQLAlchemy 2.0 async / asyncpg | 用数据库事务组织业务，明确表达条件更新、行锁与租户过滤 |
-| PostgreSQL | 外键和唯一约束兜住边界；GIN 全文索引支持检索；真实行锁支持并发验证 |
+| PostgreSQL / jieba | 外键、唯一约束和真实行锁保障一致性；应用分词配合加权 GIN 实现中文检索，保留英文检索行为，避免新增搜索集群 |
 | Redis | 独立实例承载可淘汰页面缓存与持久化、不可淘汰的任务队列；数据库仍是权限、版本和任务状态的权威来源 |
 | Celery / Beat / Outbox | 把耗时导入移出请求，使发布失败、重复投递和丢失消费可以恢复 |
 | React / TanStack Query / CodeMirror | 编辑、预览、草稿和冲突处理，集中管理服务端查询状态 |
@@ -127,6 +127,9 @@ curl -b cookies.txt "$BASE/api/workspaces/$WID/imports/$JOB"
 curl -b cookies.txt "$BASE/api/workspaces/$WID/search?q=TeamWiki"
 curl -b cookies.txt "$BASE/api/workspaces/$WID/pages/$PID/export" -o page.md
 curl -b cookies.txt "$BASE/api/workspaces/$WID/export" -o workspace.zip
+# 保留层级、标签和内部链接身份，可交给同一个 imports 接口重新导入。
+curl -b cookies.txt "$BASE/api/workspaces/$WID/export?format=teamwiki" -o workspace.teamwiki.zip
+curl -b cookies.txt --get "$BASE/api/workspaces/$WID/search" --data-urlencode 'q=知识管理'
 ```
 
 上传返回 HTTP 202；Worker 和 Beat 必须运行才能完成导入。同一幂等键改传不同内容返回 409。各页面请求、修订、搜索、图谱、任务状态和导出都重新验证空间成员身份。
@@ -138,6 +141,7 @@ curl -b cookies.txt "$BASE/api/workspaces/$WID/export" -o workspace.zip
 - **链接身份**：`[[标题]]` 在重名时标记 ambiguous，缺失时标记 unresolved；已解析引用绑定目标 ID，重命名不会改指其他页面。也支持 `[[id:UUID|标签]]`。普通保存只解析和重建当前来源页面；结构变更和批量导入仍在排他锁下全量校正。普通保存查询整个空间的目标元数据，但不读取、解析其他页面正文。
 - **缓存**：先从 PostgreSQL 验证成员、当前版本和删除状态，再查 `tw:{空间}:page:{页面}:v:{版本}`。旧请求即使晚到并回填旧键，也不会成为后续读取的新版本。Redis 连接/读写短超时，失败回退数据库；TTL 为 300 秒加 0–30 秒抖动。
 - **连接与过载**：默认两个 API 进程，每进程数据库池 5 个常驻、5 个溢出，API 合计最多 20 个数据库连接；Redis 池复用连接。达到在途上限、连接池耗尽、锁/语句超时或数据库暂时不可用时返回 503 和 Retry-After；程序及 SQL 错误仍作为 500 暴露。
+- **搜索与导出**：中文分词字段与页面同事务保存，避免旧索引任务覆盖新内容；导出使用一致性只读快照，先检查数量/字节限制，在线程中压缩，每进程最多两个工作区导出。
 - **导入**：API 同事务写 Job 和 Outbox；Dispatcher 只有在 broker 发布成功后才标记已发送。崩溃可能重复投递，因此 Worker 用任务状态、行锁和唯一导入项目键实现幂等。Beat 每 5 秒派发 Outbox、每 60 秒检查滞留任务，默认 5 分钟阈值。
 
 ## 测试与实际结果
@@ -150,12 +154,14 @@ python3.12 -m venv .venv
 .venv/bin/pip install --no-deps -e ./backend
 export TEST_DATABASE_URL='postgresql+asyncpg://用户:密码@127.0.0.1:5432/teamwiki_test'
 export REDIS_URL='redis://127.0.0.1:6379/0'
+# 预先创建另一个可丢弃数据库，供已有页面回填/降级测试独占。
+export MIGRATION_TEST_DATABASE_URL='postgresql+asyncpg://用户:密码@127.0.0.1:5432/teamwiki_migration_test'
 cd backend
 DATABASE_URL="$TEST_DATABASE_URL" ../.venv/bin/alembic upgrade head
 ../.venv/bin/pytest -q
 ```
 
-测试会清空测试库业务表，须使用独立库。PostgreSQL 测试保留迁移后的模式；SQLite 只用于隔离测试回退，不作为支持的部署数据库。
+测试会清空测试库业务表；迁移测试会回退专用迁移库，两个库都须独立于演示/生产数据库，且不能指向同一个库。PostgreSQL 测试保留迁移后的模式；SQLite 只用于隔离测试回退，不作为支持的部署数据库。
 
 ```bash
 # 在 frontend/ 中执行：
@@ -174,16 +180,16 @@ E2E_BASE_URL=http://127.0.0.1:8080 npm run test:e2e
 
 本次已确认：
 
-- v0.3 真实 PostgreSQL 后端测试 **106 项通过**，覆盖权限/IDOR、会话撤销、原子保存/恢复、并发竞争、链接、缓存、危险 ZIP、层级导入、元数据分页和历史预览隔离。前端及浏览器结果见 [v0.3 验收](docs/v0.3.md)。
+- v0.4 真实 PostgreSQL/Redis 后端 **198 项通过（16.24 秒，无跳过）**；前端 **30 项通过**，类型检查、生产构建和编译产物 DOM 回归通过；完整 Docker 栈上的真实 Chromium **7 项通过（31.14 秒，0 失败/跳过/重试）**。覆盖原有权限/并发场景，并增加中文搜索、已有数据回填、归档往返、链接身份及恶意清单测试。[v0.4 验收](docs/v0.4.md)记录具体边界。
 - 显式 Alembic `upgrade → downgrade → upgrade` 通过，系统目录确认生成全文列、GIN 索引和复合外键。
 - 真实 Redis 缓存填充、旧键驱逐、延迟旧键回填以及删除后拒绝缓存读取通过。
 - API → Outbox → Redis → Celery Worker/Beat 导入通过；重复请求和两次重复任务投递仍只有一篇导入页。
-- 10 用户短时 Locust 检查完成 **991 请求、0 失败**，其中明确验证了 103 次预期 409。小样例、本机单进程结果不能作为生产容量承诺。
-- 20,000 篇合成页面上的实际搜索计划自然使用 GIN，此次完整字段查询执行约 0.107 ms。
+- 首版历史记录：10 用户短时 Locust 检查完成 **991 请求、0 失败**，其中明确验证了 103 次预期 409。小样例、本机单进程结果不能作为生产容量承诺。
+- 历史英文计划：20,000 篇合成页自然使用 GIN，单次查询约 0.107 ms；v0.4 中文计划在 6,000 篇短合成页中命中 30 页，自然使用新 GIN，单次热缓存查询 0.090 ms。这些是执行计划观察，不是并发容量指标。
 
-v0.2 阶段已通过本机 ARM64 Docker 完整容器栈的故障与恢复检查，并在[首次远程 GitHub Actions](https://github.com/chen9zz/teamwiki/actions/runs/40275391284) 通过后端 77 项、前端 13 项及 AMD64 容器联调。v0.3 在此基础上增加层级导入、分页回归与真实 Chromium 工作流；当前结果见 [v0.3 验收](docs/v0.3.md)，所有远程执行可查看 [GitHub Actions](https://github.com/chen9zz/teamwiki/actions/workflows/ci.yml)。
+v0.2 阶段已通过本机 ARM64 Docker 完整容器栈的故障与恢复检查，并在[首次远程 GitHub Actions](https://github.com/chen9zz/teamwiki/actions/runs/40275391284) 通过后端 77 项、前端 13 项及 AMD64 容器联调。v0.3 增加层级导入、分页回归与真实 Chromium 工作流；v0.4 增加中文与归档往返回归，当前本机结果见 [v0.4 验收](docs/v0.4.md)，所有远程执行可查看 [GitHub Actions](https://github.com/chen9zz/teamwiki/actions/workflows/ci.yml)。
 
-在相同原生环境、两个 API 进程、100篇固定小文档、16个请求流、每场景10秒的对照中，不同文档保存从136.390提升至764.940请求/秒，P95从138.778降至32.144毫秒；读取从738.892至753.711请求/秒。热点每批仍为一个成功、十五个409，历史连续。它只说明本次短测下的常规保存改善，不代表线上容量、长文档或长期稳定性。原始JSON及完整限制见 [并发验证](docs/concurrency.md)。
+v0.2 历史基准：在相同原生环境、两个 API 进程、100篇固定小文档、16个请求流、每场景10秒的对照中，不同文档保存从136.390提升至764.940请求/秒，P95从138.778降至32.144毫秒；读取从738.892至753.711请求/秒。热点每批仍为一个成功、十五个409，历史连续。它只说明本次短测下的常规保存改善，不代表线上容量、长文档或长期稳定性。原始JSON及完整限制见 [并发验证](docs/concurrency.md)。
 
 首版与升级验证、原始摘要和环境条件见 [实际验证记录](docs/verification.md)。
 
@@ -191,13 +197,13 @@ v0.2 阶段已通过本机 ARM64 Docker 完整容器栈的故障与恢复检查�
 
 - 权限粒度为工作区，所有成员可读全部页面；没有每页 ACL、SSO 或公开匿名分享。
 - 邀请由用户自行分享，不发送邮件；没有实时 CRDT、多人光标或自动内容合并。
-- `simple` 全文搜索不做中文分词、语义理解或向量检索，连续中文文本的搜索能力受词元边界限制。
+- 中文及混合查询使用 jieba + PostgreSQL 加权 GIN；中文索引只覆盖正文前 32,768 字符，每字段最多 8,192 词元/96 KiB 输出，词元最多 128 字节。覆盖被截断时界面提示；不是任意子串、语义理解或向量检索。英文保留原索引；PostgreSQL 向量表示超限的写入整体回滚并返回 413。
 - 普通文档保存可以并行，但结构和权限变更仍在空间粒度串行协调；目标目录元数据查询仍随空间大小增长。下一步应测量大空间和结构密集写入，再决定目标索引、异步链接协议或更细锁粒度。
-- 导入是有界原子事务：上传最多 8 MiB、单文件最多 2 MiB、最多 200 个 Markdown 文件、200 个生成目录、目录最多 20 层、合计最多 400 页、展开最多 16 MiB，压缩比最多 100；拒绝危险路径、重复/大小写歧义路径、符号链接、加密包和非 UTF-8。目录创建为空白可编辑页，空目录不生成页；进度只统计 Markdown，通常从 queued/0 直接到 completed/N。
+- 普通 Markdown/ZIP 导入是有界原子事务：上传最多 8 MiB、单文件最多 2 MiB、最多 200 个 Markdown 文件、200 个生成目录、目录最多 20 层、合计最多 400 页、展开最多 16 MiB，压缩比最多 100；拒绝危险路径、重复/大小写歧义路径、符号链接、加密包和非 UTF-8。目录创建为空白可编辑页，空目录不生成页；进度只统计 Markdown，通常从 queued/0 直接到 completed/N。
 - 单篇正文最多 1,000,000 字符，每页最多 24 个标签。删除有子页面的页面前须先移动或删除子页面。
 - 目录和摘要接口默认 50、最多 200 条/批；前端目录、子文档、历史与搜索每批 50 条，通过“加载更多”继续。兼容的完整正文列表 API 仍最多 5,000 条，图谱仍全量加载；回收站和审计保留原有列表边界。offset 分页在并发重命名/移动时不是一致性快照，可刷新重新加载。
 - 历史保存内容快照，没有单独保存历史关系图；历史预览的链接按当前空间元数据解析，并在界面标注，不改变当前 PageLink 索引。
-- 导出是正文 Markdown，不是完整数据库备份；ZIP 不包含成员、审计、历史和所有页面元数据。空间导出最多 2,000 页或 32 MiB 正文，完整备份须使用 `pg_dump`。
+- 导出可选平铺 Markdown（2,000 页/32 MiB 正文）或可往返 TeamWiki ZIP（400 页/20 层/16 MiB 正文/8 MiB ZIP/1 MiB 清单，单页 2 MiB）。归档保留当前活跃页面的标题、标签、层级和内部绑定，导入创建新 ID；不包含成员、审计、历史或回收站，完整备份须使用 `pg_dump`。没有后台导出或对象存储。
 
 ## 项目结构与文档
 
@@ -220,7 +226,8 @@ docker-compose.yml          postgres / redis-cache / redis-broker / migrate / ap
 - [Docker 部署、资源与连接预算](docs/docker.md)
 - [推荐并发方案与对照基准](docs/concurrency.md)
 - [v0.3 层级导入、分页与真实浏览器验收](docs/v0.3.md)
+- [v0.4 中文搜索与可往返归档验收](docs/v0.4.md)
 
 ## 可选的 Phase 4
 
-后续可按真实需求增加邮件邀请、SSO、页面级权限、中文分词、结构变更的增量索引、对象存储附件和更细的异步任务可观测性；这些尚未实现。是否引入实时协同或拆分服务，应依据团队使用规模和测量结果决定。
+后续可按真实需求增加邮件邀请、SSO、页面级权限、面向实际语料的搜索相关性改进、结构变更的增量索引、对象存储附件和更细的异步任务可观测性；这些尚未实现。是否引入实时协同或拆分服务，应依据团队使用规模和测量结果决定。

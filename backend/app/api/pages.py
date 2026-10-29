@@ -1,12 +1,10 @@
 """HTTP adapters only: page transaction logic lives in services/pages.py."""
 
-import io
-import re
-import zipfile
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.orm import aliased
 
 from app.api.deps import DB, CurrentUser
@@ -22,8 +20,10 @@ from app.schemas.pages import (
     VersionInput,
 )
 from app.services import pages as service
+from app.services.exports import export_workspace as build_workspace_export
 from app.services.identity import MANAGERS, require_member
 from app.services.links import preview_revision_links
+from app.services.search import search_pages
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["pages"])
 
@@ -132,48 +132,7 @@ async def search(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
-    await require_member(db, workspace_id, user.id)
-    if not q.strip():
-        return []
-    if db.bind.dialect.name == "postgresql":
-        # Literal SQL references the migration-owned generated TSVECTOR column.
-        rows = (
-            (
-                await db.execute(
-                    text("""
-            SELECT pages.*, ts_rank_cd(search_vector, websearch_to_tsquery('simple', :q)) AS rank
-            FROM pages
-            WHERE workspace_id = :wid AND deleted_at IS NULL
-              AND search_vector @@ websearch_to_tsquery('simple', :q)
-            ORDER BY rank DESC, updated_at DESC, id
-            LIMIT :limit OFFSET :offset
-        """),
-                    {"q": q, "wid": workspace_id, "limit": limit, "offset": offset},
-                )
-            )
-            .mappings()
-            .all()
-        )
-        return [
-            {**PageOut.model_validate(dict(row)).model_dump(mode="json"), "rank": row["rank"]} for row in rows
-        ]
-    # Isolated SQLite tests only; PostgreSQL is the supported runtime.
-    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    matches = (
-        await db.scalars(
-            select(Page)
-            .where(
-                Page.workspace_id == workspace_id,
-                Page.deleted_at.is_(None),
-                Page.title.ilike(f"%{escaped}%", escape="\\")
-                | Page.content.ilike(f"%{escaped}%", escape="\\"),
-            )
-            .order_by(Page.updated_at.desc(), Page.id)
-            .offset(offset)
-            .limit(limit)
-        )
-    ).all()
-    return [{**PageOut.model_validate(page).model_dump(mode="json"), "rank": 1.0} for page in matches]
+    return await search_pages(db, workspace_id, user.id, q, limit, offset)
 
 
 @router.get("/graph")
@@ -240,29 +199,18 @@ async def audit_log(
 
 
 @router.get("/export")
-async def export_workspace(workspace_id: str, db: DB, user: CurrentUser):
-    await require_member(db, workspace_id, user.id)
-    pages = (
-        await db.scalars(
-            select(Page)
-            .where(Page.workspace_id == workspace_id, Page.deleted_at.is_(None))
-            .order_by(Page.id)
-            .limit(2001)
-        )
-    ).all()
-    if len(pages) > 2000 or sum(len(page.content.encode("utf-8")) for page in pages) > 32 * 1024 * 1024:
-        raise HTTPException(413, "Workspace export is limited to 2000 pages or 32 MiB")
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
-        for page in pages:
-            safe_title = re.sub(r"[^\w -]", "", page.title)[:80].strip() or "page"
-            archive.writestr(f"{safe_title}-{page.id}.md", page.content)
+async def export_workspace(
+    workspace_id: str,
+    db: DB,
+    user: CurrentUser,
+    format: Literal["markdown", "teamwiki"] = "markdown",
+):
+    archive = await build_workspace_export(db, workspace_id, user.id, format)
+    suffix = ".teamwiki.zip" if format == "teamwiki" else ".zip"
     return Response(
-        output.getvalue(),
+        archive,
         media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="teamwiki-{workspace_id}.zip"',
-        },
+        headers={"Content-Disposition": f'attachment; filename="teamwiki-{workspace_id}{suffix}"'},
     )
 
 

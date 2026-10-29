@@ -29,13 +29,13 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { api, download, message } from './api';
+import { api, message } from './api';
 import { availableParents, canManage, canWrite, date, roleLabels } from './lib';
 import type { Page, PageSummary, User, Workspace } from './types';
 import { Empty, ErrorNotice, Loading, Modal, useToast } from './ui';
 import { PAGE_BATCH_SIZE, usePageSummaries, usePageTree } from './pagination';
 import { Brand, NewWorkspace } from './App';
-import { ImportDialog, MembersView, TrashView, AuditView } from './panels';
+import { ExportDialog, ImportDialog, MembersView, TrashView, AuditView } from './panels';
 
 const GraphView = lazy(() => import('./GraphView'));
 const PageEditor = lazy(() =>
@@ -296,6 +296,10 @@ function SearchDialog({ wid, onClose }: { wid: string; onClose: () => void }) {
           placeholder="输入标题、内容或关键词…"
         />
       </div>
+      <p className="rail-hint" style={{ marginTop: 12 }}>
+        中文按词检索，覆盖正文前 32,768 字，并受分词数量和大小限制；英文检索保持原规则。
+        不支持语义搜索或任意子串匹配。
+      </p>
       {query.isFetching ? (
         <Loading text="搜索中…" />
       ) : query.error ? (
@@ -312,6 +316,9 @@ function SearchDialog({ wid, onClose }: { wid: string; onClose: () => void }) {
               <FileText size={15} />
               {page.title}
             </strong>
+            {page.search_index_truncated && (
+              <span className="badge neutral" aria-label="中文正文索引范围有限">中文索引已截断</span>
+            )}
             <p>{page.content.replace(/[#*`>]/g, '').slice(0, 150) || '此文档暂时没有正文'}</p>
           </Link>
         ))
@@ -461,6 +468,7 @@ function WorkspaceReady({ user, workspaces }: { user: User; workspaces: Workspac
   const [search, setSearch] = useState(false);
   const [newSpace, setNewSpace] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [documentDialog, setDocumentDialog] = useState<{
     page?: Page;
     parent?: string;
@@ -533,14 +541,6 @@ function WorkspaceReady({ user, workspaces }: { user: User; workspaces: Workspac
     members: '成员管理',
     audit: '活动记录',
   };
-  async function exportSpace() {
-    try {
-      await download(`/workspaces/${workspace.id}/export`, `${workspace.name}.zip`);
-      toast('空间文档已导出');
-    } catch (error) {
-      toast(message(error), true);
-    }
-  }
   function openPage(page: Page) {
     navigate(`/w/${workspace.id}/p/${page.id}`);
   }
@@ -622,12 +622,12 @@ function WorkspaceReady({ user, workspaces }: { user: User; workspaces: Workspac
         </div>
         <div className="sidebar-bottom">
           {manageable && (
-            <button className="nav-item" onClick={() => setImporting(true)}>
+            <button className="nav-item" title="导入 Markdown 或 TeamWiki 完整格式" onClick={() => setImporting(true)}>
               <Upload size={14} />
               导入 Markdown<span className="count">.md / .zip</span>
             </button>
           )}
-          <button className="nav-item" onClick={exportSpace}>
+          <button className="nav-item" onClick={() => setExporting(true)}>
             <ArrowDownToLine size={14} />
             导出知识库
           </button>
@@ -781,6 +781,7 @@ function WorkspaceReady({ user, workspaces }: { user: User; workspaces: Workspac
         />
       )}{' '}
       {newSpace && <NewWorkspace onClose={() => setNewSpace(false)} />}{' '}
+      {exporting && <ExportDialog workspace={workspace} onClose={() => setExporting(false)} />}
       {importing && <ImportDialog wid={workspace.id} onClose={() => setImporting(false)} />}{' '}
       {documentDialog && (
         <PageDialog

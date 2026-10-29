@@ -12,3 +12,5 @@
 - Imports bounded atomic transaction gives queued(0/N)->completed(N/N) visibility; intermediate per-file progress remains uncommitted.
 
 2026-10-28 v0.3: current ZIP import is flat despite UI wording; full import uses one atomic transaction. Frontend currently fetches at most 5000 pages and 200 revisions once. Existing CI is green on c2831b8.
+
+V0.4 decisions: Chinese/mixed queries use frozenjieba0.42.1 document/query normalization and GIN; new index bounded to32768bodychars,8192terms/96KiBperfield,128UTF8bytes/term, with visibletruncatedflag. Englishlegacyvector remains unchanged; exactPG54000tsvector overflow is nowAPI413 with transactionrollback, not unclassified500. Portable ZIP preservesmetadata and internalbindings with newlyallocatedIDs; explicit targets outsidearchive become newunresolvedidentities, while undeclared titlelinks use existingdestination-workspace rules. Offsets share the exactparser to protectcode/multiline edge cases. No newS3/Celeryexportservice; synchronous boundeddownload takesRRsnapshot then compressesoffloop with2-per-process admission.

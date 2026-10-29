@@ -67,6 +67,7 @@ class PageOut(PageFields):
     updated_at: datetime
     created_by: str
     updated_by: str
+    search_index_truncated: bool = False
 
 
 class PageSummary(BaseModel):

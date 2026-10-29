@@ -4,6 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -112,6 +113,9 @@ class Page(Base):
     title: Mapped[str] = mapped_column(String(240))
     content: Mapped[str] = mapped_column(Text, default="")
     tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    search_title_tokens: Mapped[str] = mapped_column(Text, default="", server_default="")
+    search_content_tokens: Mapped[str] = mapped_column(Text, default="", server_default="")
+    search_index_truncated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     version: Mapped[int] = mapped_column(Integer, default=1)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

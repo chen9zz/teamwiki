@@ -3,6 +3,7 @@
 import io
 import stat
 import zipfile
+import zlib
 from pathlib import PurePosixPath
 
 from fastapi import HTTPException
@@ -101,6 +102,10 @@ def validate_upload(filename: str, data: bytes) -> list[dict]:
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             entries = archive.infolist()
+            if any(entry.filename == "teamwiki.json" for entry in entries):
+                from app.services.archive_format import read_portable
+
+                return read_portable(archive)
             if len(entries) > MAX_FILES * 2:
                 _invalid("Too many archive entries")
             files = [entry for entry in entries if not entry.is_dir()]
@@ -126,8 +131,24 @@ def validate_upload(filename: str, data: bytes) -> list[dict]:
                     body = stream.read(MAX_FILE + 1)
                 documents.append(_document(str(path), body))
             return documents
-    except (zipfile.BadZipFile, RuntimeError, NotImplementedError, OSError, EOFError):
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError, OSError, EOFError, zlib.error):
         _invalid("Invalid or unsupported ZIP archive")
+
+
+def _validate_documents(documents):
+    if not isinstance(documents, list):
+        _invalid("Invalid import job payload")
+    # Only a portable manifest can produce a validated empty document list;
+    # ordinary empty ZIP uploads are still rejected by validate_upload.
+    portable = not documents or any(
+        isinstance(document, dict) and "format" in document for document in documents
+    )
+    if portable:
+        from app.services.archive_format import validate_pages
+
+        return True, validate_pages(documents)
+    _directory_paths([document["path"] for document in documents])
+    return False, None
 
 
 async def create_import_job(db, workspace_id: str, user_id: str, documents: list[dict], idempotency_key: str):
@@ -140,7 +161,11 @@ async def create_import_job(db, workspace_id: str, user_id: str, documents: list
         raise HTTPException(422, "Idempotency-Key must contain between 8 and 128 characters")
     await lock_workspace(db, workspace_id)
     await require_member(db, workspace_id, user_id, MANAGERS)
-    _directory_paths([document["path"] for document in documents])
+    portable, _ = _validate_documents(documents)
+    if portable:
+        from app.services.archive_format import preflight_portable_rewrite
+
+        preflight_portable_rewrite(documents)
     existing = await db.scalar(
         select(ImportJob).where(
             ImportJob.workspace_id == workspace_id,
@@ -215,7 +240,8 @@ async def consume_import(db, job_id: str):
     if job.status in {"completed", "failed"}:
         return job
     await require_member(db, workspace_id, job.created_by, MANAGERS)
-    directories = _directory_paths([document["path"] for document in job.payload])
+    portable, depths = _validate_documents(job.payload)
+    directories = [] if portable else _directory_paths([document["path"] for document in job.payload])
     job.status = "running"
     job.attempts += 1
     job.error = None
@@ -229,6 +255,63 @@ async def consume_import(db, job_id: str):
             select(Page).where(Page.workspace_id == workspace_id, Page.import_job_id == job.id)
         )
     }
+    if portable:
+        from app.db.base import new_id
+        from app.models import PageLink
+        from app.services.archive_format import (
+            explicit_uuid_targets,
+            rewrite_portable_documents,
+            unbound_uuid_spelling,
+        )
+
+        identities = {
+            document["key"]: imported[document["path"]].id if document["path"] in imported else new_id()
+            for document in job.payload
+        }
+        # References to identities outside this archive receive consistent,
+        # fresh unbound identities. They cannot capture a destination page.
+        for document in job.payload:
+            for old_id in explicit_uuid_targets(document["content"]):
+                if old_id not in identities:
+                    identities[old_id] = unbound_uuid_spelling(old_id, new_id())
+        # Validate all actual rewritten bodies and link groups before creating
+        # the first page; no accepted archive can fail later due to ID growth.
+        rewritten = rewrite_portable_documents(job.payload, identities)
+        for document in sorted(job.payload, key=lambda document: depths[document["key"]]):
+            key = document["key"]
+            if document["path"] not in imported:
+                imported[document["path"]] = await create_in_transaction(
+                    db,
+                    workspace_id,
+                    job.created_by,
+                    PageCreate(
+                        title=document["title"],
+                        content=rewritten[key]["content"],
+                        parent_id=identities.get(document["parent_key"]),
+                        tags=document["tags"],
+                    ),
+                    import_job_id=job.id,
+                    import_item_key=document["path"],
+                    index_links=False,
+                    page_id=identities[key],
+                )
+        for document in job.payload:
+            source = imported[document["path"]]
+            for link in rewritten[document["key"]]["links"]:
+                raw = link["raw_target"]
+                db.add(
+                    PageLink(
+                        workspace_id=workspace_id,
+                        source_id=source.id,
+                        target_id=link["target_key"],
+                        raw_target=raw,
+                        state="resolved",
+                        source_version=source.version,
+                    )
+                )
+            result.append(source.id)
+        job.processed = len(result)
+        await db.flush()
     directory_ids = {}
     for directory in directories:
         key = f"dir:{directory}"
@@ -246,7 +329,7 @@ async def consume_import(db, job_id: str):
                 index_links=False,
             )
         directory_ids[directory] = page.id
-    for document in job.payload:
+    for document in [] if portable else job.payload:
         path = _path(document["path"])
         key = str(path)
         page = imported.get(key)

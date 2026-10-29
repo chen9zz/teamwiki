@@ -40,6 +40,18 @@ async def test_cache_namespaces_and_stale_fill_cannot_override_new_version(clien
     assert (await client.get(url)).status_code == 404
 
 
+async def test_pre_upgrade_cache_does_not_hide_backfilled_search_truncation(client, redis_cache):
+    await register(client)
+    wid = (await workspace(client))["id"]
+    page = await create_page(client, wid, content="知识" * 20_000)
+    assert page["search_index_truncated"] is True
+    legacy = {key: value for key, value in page.items() if key != "search_index_truncated"}
+    await cache.write(cache.page_key(wid, page["id"], 1), legacy)
+    response = await client.get(f"/api/workspaces/{wid}/pages/{page['id']}")
+    assert response.status_code == 200
+    assert response.json()["search_index_truncated"] is True
+
+
 async def test_cache_does_not_bypass_removed_membership(client, second_client, redis_cache):
     await register(client)
     wid = (await workspace(client))["id"]

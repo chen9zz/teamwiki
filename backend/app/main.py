@@ -14,7 +14,7 @@ from app.api import auth, jobs, pages, workspaces
 from app.api.deps import DB
 from app.core.cache import cache_client, close_cache
 from app.core.config import settings
-from app.core.errors import register_error_handlers
+from app.core.errors import fulltext_limit_response, register_error_handlers
 from app.core.logging import configure_logging
 from app.core.metrics import (
     DB_FAILURES,
@@ -26,6 +26,7 @@ from app.core.metrics import (
     render_metrics,
 )
 from app.db.session import capacity_failure_reason, engine
+from app.services.search import warm_search_tokenizer
 
 configure_logging()
 logger = logging.getLogger("teamwiki.requests")
@@ -34,6 +35,7 @@ logger = logging.getLogger("teamwiki.requests")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
+        await warm_search_tokenizer()
         yield
     finally:
         try:
@@ -48,7 +50,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     lifespan=lifespan,
     title="TeamWiki",
-    version="0.3.0",
+    version="0.4.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
@@ -76,6 +78,9 @@ def unavailable_response():
 @app.exception_handler(TimeoutError)
 @app.exception_handler(DBAPIError)
 async def database_capacity_error(request: Request, error: Exception):
+    input_limit = fulltext_limit_response(error)
+    if input_limit is not None:
+        return input_limit
     reason = capacity_failure_reason(error)
     if reason is None:
         raise error

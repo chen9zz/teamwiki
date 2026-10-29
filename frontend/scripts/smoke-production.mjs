@@ -56,6 +56,7 @@ const page = {
   id: 'production-page',
   workspace_id: workspace.id,
   title: 'Production article',
+  search_index_truncated: false,
   content: '# Production heading\n\nRendered **production content**.\n\n## Second heading',
   parent_id: null,
   tags: ['production'],
@@ -138,8 +139,23 @@ try {
     () => document.querySelector('.prose h2')?.textContent === 'Second heading',
     'the Markdown preview after editing',
   );
+  const exportButton = Array.from(document.querySelectorAll('button')).find(
+    (button) => button.textContent === '导出知识库',
+  );
+  assert.ok(exportButton, 'the compiled workspace must offer archive export');
+  exportButton.click();
+  await waitFor(
+    () => document.querySelector('[role="dialog"][aria-label="导出团队知识"]'),
+    'the archive format dialog',
+  );
+  const exportDialog = document.querySelector('[role="dialog"][aria-label="导出团队知识"]');
+  const format = exportDialog.querySelector('select[aria-label="导出格式"]');
+  assert.deepEqual(Array.from(format.options, (option) => option.value), ['teamwiki', 'markdown']);
+  assert.equal(format.value, 'teamwiki');
+  exportDialog.querySelector('button[aria-label="关闭对话框"]').click();
+  await waitFor(() => !document.querySelector('[role="dialog"]'), 'archive dialog dismissal');
   assert.deepEqual(runtimeErrors, [], 'production document flow must not report runtime errors');
-  console.log('Production bundle smoke passed: document → CodeMirror editor → Markdown preview.');
+  console.log('Production bundle smoke passed: document → CodeMirror editor → Markdown preview → archive format dialog.');
   dom.window.close();
   process.exit(0);
 } catch (error) {

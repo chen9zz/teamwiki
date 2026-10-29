@@ -23,7 +23,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { api, message } from './api';
+import { api, download, message } from './api';
 import { canManage, canWrite, date, roleLabels } from './lib';
 import type {
   AuditEvent,
@@ -388,6 +388,63 @@ export function TrashView({ workspace }: { workspace: Workspace }) {
     </div>
   );
 }
+export function ExportDialog({ workspace, onClose }: { workspace: Workspace; onClose: () => void }) {
+  const [format, setFormat] = useState<'teamwiki' | 'markdown'>('teamwiki');
+  const toast = useToast();
+  const exportArchive = useMutation({
+    mutationFn: () => download(
+      `/workspaces/${workspace.id}/export${format === 'teamwiki' ? '?format=teamwiki' : ''}`,
+      `${workspace.name}.${format}.zip`,
+    ),
+    onSuccess: () => {
+      toast('空间文档已导出');
+      onClose();
+    },
+  });
+  return (
+    <Modal title="导出团队知识" onClose={onClose}>
+      <p className="modal-description">
+        导出当前有效文档。选择 TeamWiki 完整格式，可以在另一个空间恢复标题、目录层级、标签和归档内的链接关系。
+      </p>
+      <label className="field">
+        <span>导出格式</span>
+        <select
+          aria-label="导出格式"
+          value={format}
+          disabled={exportArchive.isPending}
+          onChange={(event) => {
+            setFormat(event.target.value as 'teamwiki' | 'markdown');
+            exportArchive.reset();
+          }}
+        >
+          <option value="teamwiki">TeamWiki 完整格式（ZIP）</option>
+          <option value="markdown">纯 Markdown（ZIP）</option>
+        </select>
+        <small>
+          {format === 'teamwiki'
+            ? '包含文档正文与元数据；再次导入时创建新文档 ID，并重新连接归档内的文档。'
+            : '正文按 Markdown 文件平铺导出；不携带目录、标签和链接绑定元数据。'}
+        </small>
+      </label>
+      <p className="rail-hint">
+        {format === 'teamwiki'
+          ? '最多 400 篇文档、20 层目录；正文合计最多 16 MiB，单篇最多 2 MiB / 100 万字符，下载 ZIP 最多 8 MiB。'
+          : '最多 2,000 篇文档，正文合计最多 32 MiB；文件平铺导出，不保留层级或标签。'}
+        账号、成员权限、活动记录和历史版本不在导出范围。
+      </p>
+      <p className="rail-hint">下载在当前请求内生成，请等待文件准备完成。</p>
+      <ErrorNotice error={exportArchive.error} />
+      <div className="modal-actions">
+        <button className="button" onClick={onClose}>取消</button>
+        <button className="button primary" disabled={exportArchive.isPending} onClick={() => exportArchive.mutate()}>
+          <ArrowDownToLine size={13} />
+          {exportArchive.isPending ? '正在生成…' : '下载 ZIP'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 export function ImportDialog({ wid, onClose }: { wid: string; onClose: () => void }) {
   const storageKey = `teamwiki-import:${wid}`;
   const [file, setFile] = useState<File | null>(null);
@@ -440,7 +497,9 @@ export function ImportDialog({ wid, onClose }: { wid: string; onClose: () => voi
   function choose(selected: File | null) {
     setLocalError(null);
     if (selected && selected.size > 8 * 1024 * 1024) {
-      setLocalError('文件超过 8 MB，请分批导入。');
+      setFile(null);
+      upload.reset();
+      setLocalError('文件超过 8 MiB，请分批导入。');
       return;
     }
     setFile(selected);
@@ -457,9 +516,13 @@ export function ImportDialog({ wid, onClose }: { wid: string; onClose: () => voi
   return (
     <Modal title="导入团队知识" onClose={onClose}>
       <p className="modal-description">
-        把已有的知识带进来。支持 UTF-8 Markdown 或包含 Markdown 文档的 ZIP，文件最大 8 MB，最多 200
-        篇文档。文件夹结构会转成文档层级。
+        支持 UTF-8 Markdown、普通 Markdown ZIP 和 TeamWiki 完整格式 ZIP。上传最多 8 MiB；
+        解压后正文合计最多 16 MiB，单篇最多 2 MiB / 100 万字符，目录最多 20 层。
       </p>
+      <ul className="rail-hint">
+        <li>普通 Markdown ZIP：最多 200 个 Markdown 文件、200 个目录，共 400 篇文档。文件名用作标题，文件夹转成目录文档。</li>
+        <li>TeamWiki 完整格式：最多 400 篇文档，元数据最多 1 MiB。恢复标题、目录、标签和归档内的链接关系；创建新 ID，保留目标空间的已有文档。</li>
+      </ul>
       {jobId ? (
         <>
           <div
@@ -509,7 +572,7 @@ export function ImportDialog({ wid, onClose }: { wid: string; onClose: () => voi
         <>
           <label className="file-drop">
             <Upload size={27} strokeWidth={1.4} style={{ margin: '0 auto' }} />
-            <strong>{file ? file.name : '选择一个 Markdown 或 ZIP 文件'}</strong>
+            <strong>{file ? file.name : '选择 Markdown、普通 ZIP 或 TeamWiki ZIP'}</strong>
             <small>
               {file ? `${(file.size / 1024).toFixed(1)} KB` : '从文件夹开始，把团队经验整理成知识'}
             </small>

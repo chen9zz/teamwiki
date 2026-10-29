@@ -3,7 +3,7 @@
   "info": {
     "title": "TeamWiki",
     "description": "Tenant-scoped collaborative knowledge base. Sign in using /api/auth/login; the HttpOnly session cookie authenticates subsequent API calls. Page mutations require the currently observed version; stale saves return 409.",
-    "version": "0.3.0"
+    "version": "0.4.0"
   },
   "paths": {
     "/api/health": {
@@ -935,6 +935,20 @@
             "schema": {
               "type": "string",
               "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "markdown",
+                "teamwiki"
+              ],
+              "type": "string",
+              "default": "markdown",
+              "title": "Format"
             }
           }
         ],
@@ -2091,6 +2105,11 @@
           "updated_by": {
             "type": "string",
             "title": "Updated By"
+          },
+          "search_index_truncated": {
+            "type": "boolean",
+            "title": "Search Index Truncated",
+            "default": false
           }
         },
         "type": "object",

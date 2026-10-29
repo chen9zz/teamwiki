@@ -14,6 +14,7 @@ export interface WikiPage {
   title: string;
   content: string;
   version: number;
+  tags: string[];
 }
 
 interface Account {
@@ -72,10 +73,11 @@ export async function createPage(
   title: string,
   content = 'Original browser regression content.',
   parent_id: string | null = null,
+  tags: string[] = [],
 ): Promise<WikiPage> {
   return json<WikiPage>(
     await space.owner.api.post(`/api/workspaces/${space.id}/pages`, {
-      data: { title, content, parent_id },
+      data: { title, content, parent_id, tags },
     }),
     201,
   );

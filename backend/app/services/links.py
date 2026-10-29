@@ -5,6 +5,7 @@ or unresolved references; renaming a target never silently retargets a link.
 """
 
 import re
+from array import array
 from collections import defaultdict
 
 
@@ -15,12 +16,16 @@ def _escaped(text: str, position: int) -> bool:
     return (end - position) % 2 == 1
 
 
-def _without_code(content: str) -> str:
+def _without_code(content: str, *, with_offsets: bool = False):
     # Linear fence scan; unclosed fences extend through EOF. Closing fences may
     # be longer than the opener. Avoid nested regexes on untrusted Markdown.
     lines = []
+    positions = array("i") if with_offsets else None
+    original_offset = 0
     fence_char, fence_size = "", 0
     for line in content.splitlines(keepends=True):
+        line_start = original_offset
+        original_offset += len(line)
         stripped = line.lstrip(" ")
         indent = len(line) - len(stripped)
         marker = stripped[:1]
@@ -38,6 +43,8 @@ def _without_code(content: str) -> str:
         if indent >= 4 or line.startswith("\t"):
             continue
         lines.append(line)
+        if with_offsets:
+            positions.extend(range(line_start, original_offset))
     text = "".join(lines)
     # Pair inline delimiters using a precomputed next-equal-run table. Unmatched
     # backticks are literal text; repeatedly searching for a close is quadratic.
@@ -56,17 +63,25 @@ def _without_code(content: str) -> str:
             next_run[index] = latest[size]
         latest[size] = index
     parts, cursor, index = [], 0, 0
+    offsets = array("i") if with_offsets else None
     while index < len(runs):
         if index in next_run:
             closing = next_run[index]
             parts.append(text[cursor : runs[index][0]])
             parts.append(" ")
+            if with_offsets:
+                offsets.extend(positions[cursor : runs[index][0]])
+                offsets.append(-1)  # Synthetic inline-code replacement, never writable.
             cursor = runs[closing][1]
             index = closing + 1
         else:
             index += 1
     parts.append(text[cursor:])
-    return "".join(parts)
+    visible = "".join(parts)
+    if with_offsets:
+        offsets.extend(positions[cursor:])
+        return visible, offsets
+    return visible
 
 
 def parse_wiki_links(content: str) -> list[str]:
@@ -134,9 +149,7 @@ async def preview_revision_links(db, workspace_id, page_id, revision_version, us
     from app.services.identity import require_member
 
     await require_member(db, workspace_id, user_id)
-    source = await db.scalar(
-        select(Page.id).where(Page.workspace_id == workspace_id, Page.id == page_id)
-    )
+    source = await db.scalar(select(Page.id).where(Page.workspace_id == workspace_id, Page.id == page_id))
     if source is None:
         raise HTTPException(404, "Page not found")
     content = await db.scalar(

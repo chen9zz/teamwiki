@@ -11,6 +11,7 @@ from app.repositories.pages import compare_and_swap, find_page
 from app.schemas.pages import PageCreate, PageOut
 from app.services.identity import WRITERS, audit, lock_workspace, require_member
 from app.services.links import reconcile_source, reconcile_workspace
+from app.services.search import index_fields
 
 
 async def require_page(db, wid, pid, include_deleted=False):
@@ -24,7 +25,7 @@ async def get_page(db, wid, pid, user_id):
     await require_member(db, wid, user_id)
     meta = (
         await db.execute(
-            select(Page.version, Page.deleted_at).where(
+            select(Page.version, Page.deleted_at, Page.search_index_truncated).where(
                 Page.workspace_id == wid,
                 Page.id == pid,
             )
@@ -42,7 +43,14 @@ async def get_page(db, wid, pid, user_id):
             and value.get("version") == meta.version
         ):
             try:
-                return PageOut.model_validate(value)
+                # A pre-upgrade cache entry can have the same content version
+                # but omit this migration-backfilled derived flag.
+                return PageOut.model_validate(
+                    {
+                        **value,
+                        "search_index_truncated": meta.search_index_truncated,
+                    }
+                )
             except ValueError:
                 pass
         return None
@@ -99,10 +107,13 @@ async def create_in_transaction(
     import_job_id=None,
     import_item_key=None,
     index_links=True,
+    page_id=None,
 ):
     """Caller owns transaction and workspace lock; also used by import worker."""
-    await _parent(db, wid, None, data.parent_id)
+    await _parent(db, wid, page_id, data.parent_id)
     page = Page(
+        **({"id": page_id} if page_id is not None else {}),
+        **await index_fields(data.title, data.content),
         workspace_id=wid,
         created_by=user_id,
         updated_by=user_id,
@@ -172,6 +183,13 @@ async def mutate_page(db, wid, pid, user_id, version, values, action="page.updat
             raise HTTPException(409, "Move or delete child pages first")
     if values.get("deleted_at", "unchanged") is None:
         await _parent(db, wid, pid, values.get("parent_id", page.parent_id))
+    # CAS uses a bulk UPDATE, so ORM listeners cannot keep these fields atomic.
+    # Tokenize before the statement and send source plus derived fields together.
+    search_values = {}
+    if "title" in values or "content" in values:
+        search_values = await index_fields(
+            values.get("title", page.title), values.get("content", page.content)
+        )
     changed = await compare_and_swap(
         db,
         wid,
@@ -179,6 +197,7 @@ async def mutate_page(db, wid, pid, user_id, version, values, action="page.updat
         version,
         {
             **values,
+            **search_values,
             "updated_at": utcnow(),
             "updated_by": user_id,
         },

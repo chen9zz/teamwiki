@@ -1,0 +1,96 @@
+{
+  "version": "0.4.0",
+  "verified_on": "2026-10-29",
+  "base_commit": "73a44c5e8221d6d5f1dc9e7ae9d0b06154c0b814",
+  "backend": {
+    "runtime": "Python3.12 / native PostgreSQL17 / Redis7",
+    "passed": 198,
+    "skipped": 0,
+    "duration_seconds": 16.24
+  },
+  "frontend": {
+    "vitest_passed": 30,
+    "typecheck": "passed",
+    "build": "passed",
+    "production_dom_regression": "passed",
+    "known_warning": "MarkdownEditor chunk about618KiB"
+  },
+  "browser": {
+    "engine": "Playwright1.64.1 / Chromium",
+    "mode": "compiled Docker frontend, real API/PostgreSQL/Redis/Worker/Beat, no response stubs",
+    "workers": 1,
+    "passed": 7,
+    "failed": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "duration_ms": 31138.17,
+    "verified_at_utc": "2026-10-29T10:00:34.543Z",
+    "cases": [
+      {
+        "title": "login, edit and save through the production UI",
+        "result": "expected"
+      },
+      {
+        "title": "independent browser sessions compare the same version and retain the 409 draft",
+        "result": "expected"
+      },
+      {
+        "title": "Viewer has read-only controls and the real API rejects a forced write",
+        "result": "expected"
+      },
+      {
+        "title": "nested ZIP uploaded in the UI completes in the real worker and refreshes the tree",
+        "result": "expected"
+      },
+      {
+        "title": "root and child tree collections load bounded batches beyond fifty rows",
+        "result": "expected"
+      },
+      {
+        "title": "history loads older real revisions beyond the first fifty snapshots",
+        "result": "expected"
+      },
+      {
+        "title": "Chinese search opens real results and a TeamWiki archive retains metadata and internal identities in another space",
+        "result": "expected"
+      }
+    ]
+  },
+  "migration": {
+    "revision": "0003_chinese_search",
+    "existing_page_backfill_downgrade_reupgrade": "passed",
+    "business_content_version_history_preserved": true,
+    "separate_disposable_database": true
+  },
+  "docker": {
+    "platform": "linux/arm64",
+    "full_build": "passed",
+    "ready": "passed",
+    "isolated_compose_project": "teamwiki-v04"
+  },
+  "chinese_query_plan": {
+    "pages": 6000,
+    "matches": 30,
+    "natural_gin": "ix_pages_search_tokens_vector",
+    "execution_ms": 0.09,
+    "artifact": "chinese-search-plan-v0.4.json",
+    "limitations": "Single warm-cache local synthetic query; not concurrent capacity or SLA evidence."
+  },
+  "review_regressions": [
+    "query truncation rejected instead of silently widening matches",
+    "noncanonical UUIDs do not become valid targets",
+    "rewritten references preserve length and code boundaries",
+    "external explicit IDs do not capture destination-existing pages",
+    "export count/bytes and relationship metadata checked before materialization",
+    "snapshot export coherent during writes",
+    "cancellation retains compression admission until task completion",
+    "old Redis payload cannot hide new backfill coverage metadata",
+    "tsvector representation overflow returns413 and rolls back"
+  ],
+  "limits": [
+    "Chinese index has explicit prefix/term/output budgets",
+    "portable export is a bounded synchronous snapshot, not a database backup",
+    "atomic imports still serialize structural writes within one workspace",
+    "no new v0.4 throughput or production capacity measurement"
+  ]
+}

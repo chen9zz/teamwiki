@@ -55,9 +55,30 @@ cd backend
 
 ## v0.3 浏览器验收与升级
 
-v0.2升级运行`alembic upgrade head`，新增0002仅添加页面树复合索引，不改变已有业务字段或已完成导入任务。升级前仍应备份数据库；schema回退0001只移除该索引。ZIP新任务开始生成目录页，已完成的旧平铺导入不会被自动搬动。
+v0.3 的 `0002_page_tree_order` 仅添加页面树复合索引，不改变已有业务字段或已完成导入任务；从 0002 回退到 0001 只移除该索引。ZIP 新任务开始生成目录页，已完成的旧平铺导入不会被自动搬动。当前 `head` 已包含 v0.4 的 0003 回填，升级应按下一节停写操作。
 
 真实浏览器测试先启动完整的已编译Compose栈，再在frontend目录运行`npm ci`、`npx playwright install --with-deps chromium`与`E2E_BASE_URL=http://127.0.0.1:8080 npm run test:e2e`。请使用独立Compose项目/数据库；一个worker，无response mock。失败trace/截图/HTML产物由Git忽略，CI自动上传诊断。更多见[E2E说明](../frontend/e2e/README.md)。
+
+## v0.3 → v0.4 升级
+
+`0003_chinese_search` 会在事务中增加分词字段、回填既有页面并建立 GIN 索引。它不是在线无锁迁移：耗时随页面数变化，旧 API/Worker 也不会维护新字段，因此升级期间必须停写。先完成镜像构建并备份，再停止 API、Worker 和 Beat；不要在迁移期间启动旧版本写入者。以下命令沿用现有 `.env` 与数据卷，数据库名/账户如有自定义需同步替换：
+
+```bash
+# 在已经取到 v0.4 源码的项目目录，先构建，减少停机时间。
+docker compose build
+mkdir -p work/backups
+umask 077
+docker compose exec -T postgres pg_dump -U teamwiki -d teamwiki -Fc > work/backups/pre-v0.4.dump
+# 等待/检查进行中的导入，再安排维护窗口停止所有写入者。
+docker compose stop api worker beat
+docker compose run --rm --no-deps migrate
+docker compose up -d --wait --wait-timeout 180
+curl --fail http://localhost:8080/api/ready
+```
+
+备份应验证可读并定期在独立库演练恢复。失败时保留备份和数据卷，不要反复尝试旧服务写入新模式；先检查迁移日志。回退到 `0002_page_tree_order` 仅移除新增分词字段/索引，保留原始正文和英文向量，仍须停写并使用匹配的应用版本。迁移不会自动改造已完成的旧导入任务。
+
+v0.4 的便携 ZIP 仅用于活跃页面迁移，不包含账户、成员、历史或审计，不能代替 `pg_dump`。导出是有限大小的同步快照下载，忙时可按 `Retry-After` 重试；超过格式上限须拆分数据或后续扩展后台导出能力。
 
 ## 数据库迁移与备份
 
@@ -77,12 +98,19 @@ docker compose exec -T postgres pg_restore -U teamwiki -d teamwiki --clean --if-
 
 ```bash
 export TEST_DATABASE_URL='postgresql+asyncpg://teamwiki:your-password@127.0.0.1:5432/teamwiki_test'
+# 预先另建独立的空库；迁移测试会 downgrade base，切勿使用上面的业务测试库。
+export MIGRATION_TEST_DATABASE_URL='postgresql+asyncpg://teamwiki:your-password@127.0.0.1:5432/teamwiki_migration_test'
+export REDIS_URL='redis://127.0.0.1:6379/13'
 cd backend
 DATABASE_URL="$TEST_DATABASE_URL" ../.venv/bin/alembic upgrade head
 ../.venv/bin/pytest -q
 ```
 
-前端：`cd frontend && npm test && npm run build`。CI 使用 PostgreSQL、Redis 服务，执行迁移、测试以及迁移回退再升级。
+`MIGRATION_TEST_DATABASE_URL` 必须指向单独、可销毁的 PostgreSQL 库；该测试会删除其全部业务表，建立旧版夹具，再验证升级回填、降级及再升级。未配置时该用例跳过，不能把跳过视作迁移已验证。普通 `TEST_DATABASE_URL` 与 Redis DB 也必须专供测试，不能复用演示/生产数据。
+
+前端：`cd frontend && npm test && npm run typecheck && npm run build`。真实浏览器流程见上文，需完整 PostgreSQL/Redis/Worker/Beat 栈。CI 使用 PostgreSQL、Redis 服务及独立迁移测试库，执行迁移、测试以及迁移回退再升级。
+
+2026-10-29 本地 v0.4 验证为后端 **198 项通过、无跳过**，前端 **30 项通过**，真实 Chromium **7 项通过**；还运行了类型检查、生产构建及编译产物 DOM 回归。详情与边界见 [v0.4 验证记录](v0.4.md)，这些是当前测试结果，不能当作生产容量承诺。
 
 压测先运行 seed，随后：
 

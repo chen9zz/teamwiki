@@ -229,3 +229,104 @@ test('history loads older real revisions beyond the first fifty snapshots', asyn
   expect(historyRequests.every((url) => url.searchParams.get('limit') === '50')).toBe(true);
   expect(historyRequests.some((url) => url.searchParams.get('offset') === '50')).toBe(true);
 });
+
+test('Chinese search opens real results and a TeamWiki archive retains metadata and internal identities in another space', async ({ page, space }) => {
+  const root = await createPage(space, '工程知识手册', '团队工程文档目录。', null, ['工程', 'v0.4']);
+  const target = await createPage(space, '部署指南', '归档内正确的部署步骤。', root.id, ['发布']);
+  const body = `# 知识沉淀 API 实践\n\n团队知识管理与 API 集成。\n\n[[部署指南|按标题打开]] 与 [[id:${target.id}|按 ID 打开]]。\n\n示例代码：\`[[id:${target.id}]]\``;
+  const source = await createPage(space, '知识沉淀 API 实践', body, root.id, ['知识管理', 'API']);
+  const destination = await json<{ id: string }>(
+    await space.owner.api.post('/api/workspaces', { data: { name: `Archive destination ${randomUUID()}` } }),
+    201,
+  );
+  const destinationSpace = { id: destination.id, owner: space.owner };
+  const existing = await createPage(destinationSpace, target.title, '同名已有文档应保持独立。');
+
+  await login(page, space.owner, `/w/${space.id}`);
+  await page.getByRole('button', { name: '搜索知识库' }).click();
+  const search = page.getByRole('dialog', { name: '搜索团队知识' });
+  for (const query of ['知识', '知识 API']) {
+    const [searched] = await Promise.all([
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === `/api/workspaces/${space.id}/search` && url.searchParams.get('q') === query;
+      }),
+      search.getByLabel('搜索文档', { exact: true }).fill(query),
+    ]);
+    expect(searched.status()).toBe(200);
+    await expect(search.locator('.search-result').filter({ has: page.getByText(source.title, { exact: true }) }))
+      .toBeVisible();
+  }
+  await search.locator('.search-result').filter({ has: page.getByText(source.title, { exact: true }) }).click();
+  await expect(page.getByRole('heading', { name: source.title, exact: true }).first()).toBeVisible();
+  await expect(page.locator('.prose')).toContainText('团队知识管理与 API 集成');
+
+  await page.getByRole('button', { name: '导出知识库', exact: true }).click();
+  const exporting = page.getByRole('dialog', { name: '导出团队知识' });
+  await exporting.getByLabel('导出格式', { exact: true }).selectOption('teamwiki');
+  const [archive, exported] = await Promise.all([
+    page.waitForEvent('download'),
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === `/api/workspaces/${space.id}/export` && url.searchParams.get('format') === 'teamwiki';
+    }),
+    exporting.getByRole('button', { name: '下载 ZIP', exact: true }).click(),
+  ]);
+  expect(exported.status()).toBe(200);
+  expect(archive.suggestedFilename()).toMatch(/\.teamwiki\.zip$/);
+  expect(await archive.failure()).toBeNull();
+  const archivePath = await archive.path();
+  expect(archivePath).not.toBeNull();
+  const archiveBody = readFileSync(archivePath!);
+  expect(archiveBody.subarray(0, 2).toString()).toBe('PK');
+
+  await page.getByLabel('选择知识空间').selectOption(destination.id);
+  await expect(page).toHaveURL(new RegExp(`/w/${destination.id}$`));
+  await page.getByRole('button', { name: /导入 Markdown/ }).click();
+  const importing = page.getByRole('dialog', { name: '导入团队知识' });
+  await importing.getByLabel('选择导入文件').setInputFiles({ name: 'browser-roundtrip.teamwiki.zip', mimeType: 'application/zip', buffer: archiveBody });
+  const uploaded = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/workspaces/${destination.id}/imports` && response.request().method() === 'POST');
+  await importing.getByRole('button', { name: '开始导入', exact: true }).click();
+  const upload = await uploaded;
+  expect(upload.status()).toBe(202);
+  const job = await upload.json();
+  await expect(importing.getByText('导入已完成', { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(importing.getByText('已处理 3 / 3 篇文档', { exact: true })).toBeVisible();
+  const completed = await json<{ status: string; result: string[] }>(await space.owner.api.get(`/api/workspaces/${destination.id}/imports/${job.id}`));
+  expect(completed.status).toBe('completed');
+  expect(completed.result).toHaveLength(3);
+  const imported = await Promise.all(completed.result.map(async (id) => json<WikiPage>(await space.owner.api.get(`/api/workspaces/${destination.id}/pages/${id}`))));
+  const importedRoot = imported.find((item) => item.title === root.title)!;
+  const importedTarget = imported.find((item) => item.title === target.title)!;
+  const importedSource = imported.find((item) => item.title === source.title)!;
+  expect(importedRoot.tags).toEqual(['工程', 'v0.4']);
+  expect(importedSource.tags).toEqual(['知识管理', 'API']);
+  expect(importedTarget.tags).toEqual(['发布']);
+  expect(importedRoot.parent_id).toBeNull();
+  expect(importedTarget.parent_id).toBe(importedRoot.id);
+  expect(importedSource.parent_id).toBe(importedRoot.id);
+  expect(imported.every((item) => ![root.id, target.id, source.id].includes(item.id))).toBe(true);
+  expect(importedTarget.id).not.toBe(existing.id);
+  expect(importedSource.content).toContain(`[[id:${importedTarget.id}|按 ID 打开]]`);
+  expect(importedSource.content).toContain(`\`[[id:${target.id}]]\``);
+  const links = await json<{ outgoing: { target_id: string | null; state: string; raw_target: string }[] }>(await space.owner.api.get(`/api/workspaces/${destination.id}/pages/${importedSource.id}/links`));
+  expect(links.outgoing).toHaveLength(2);
+  expect(links.outgoing.every((link) => link.state === 'resolved' && link.target_id === importedTarget.id)).toBe(true);
+  expect((await json<WikiPage>(await space.owner.api.get(`/api/workspaces/${destination.id}/pages/${existing.id}`))).content).toBe(existing.content);
+
+  await importing.getByRole('button', { name: '返回知识空间', exact: true }).click();
+  const tree = page.locator('.page-tree');
+  await expect(tree.getByRole('link', { name: root.title, exact: true })).toBeVisible();
+  await expect(tree.getByRole('link', { name: source.title, exact: true })).toHaveCount(0);
+  await tree.getByRole('button', { name: `展开 ${root.title}`, exact: true }).click();
+  await tree.getByRole('link', { name: source.title, exact: true }).click();
+  await expect(page.getByRole('heading', { name: source.title, exact: true }).first()).toBeVisible();
+  await expect(page.locator('.tag-list')).toContainText('知识管理');
+  await expect(page.locator('.tag-list')).toContainText('API');
+  for (const label of ['按标题打开', '按 ID 打开']) {
+    await expect(page.locator('.prose').getByRole('link', { name: label, exact: true }))
+      .toHaveAttribute('href', `/w/${destination.id}/p/${importedTarget.id}`);
+  }
+  await page.locator('.prose').getByRole('link', { name: '按标题打开', exact: true }).click();
+  await expect(page.locator('.prose')).toContainText('归档内正确的部署步骤');
+});
