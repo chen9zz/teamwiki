@@ -171,3 +171,5 @@ v0.3已公开发布；[GitHub Actions40629258968](https://github.com/chen9zz/tea
 真实 PostgreSQL17、Redis7 后端198项通过（16.24秒，无跳过），其中包含独立迁移库的旧页面分词回填及降级再升级；前端30项、类型检查、生产构建与编译产物DOM回归通过。完整ARM64 Docker栈上的真实Chromium7项通过（31.14秒，0失败/跳过/重试），增加中文/混合检索和UI导出→跨空间导入后层级、标签及链接身份核对，无API响应mock。OpenAPI快照为0.4.0，共28个路径。
 
 6000篇短合成页、30个命中的中文EXPLAIN自然选择新GIN，单次热缓存Execution Time为0.090ms；不构成容量或线上延迟承诺。独立审查发现的查询删词、非标准UUID、代码边界重写、超限正文、导出资源及旧缓存覆盖标记问题均补充回归。详见[v0.4行为](v0.4.md)、[结构化结果](verification-artifacts/v0.4.json)及[执行计划](verification-artifacts/chinese-search-plan-v0.4.json)。本轮没有新增吞吐量结论。
+
+v0.4 [GitHub Actions40855540360](https://github.com/chen9zz/teamwiki/actions/runs/40855540360) 三个任务全部通过；远程日志确认198后端（27.71秒）、30前端、7真实Chromium（29.7秒），包括独立迁移库和可逆迁移。[远程结构化记录](verification-artifacts/github-actions-v0.4.json)。

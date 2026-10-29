@@ -1,0 +1,42 @@
+{
+  "version": "0.4.0",
+  "application_commit": "50ec834b59a5ae284dfb79a8f9edb43a104e9147",
+  "run_id": 40855540360,
+  "url": "https://github.com/chen9zz/teamwiki/actions/runs/40855540360",
+  "conclusion": "success",
+  "created_at": "2026-10-29T10:11:15Z",
+  "updated_at": "2026-10-29T10:13:34Z",
+  "environment": "GitHub-hosted Ubuntu / AMD64 / Python3.12 / PostgreSQL17 / Redis7 / compiled complete Compose stack / Chromium",
+  "jobs": [
+    {
+      "name": "frontend",
+      "conclusion": "success",
+      "startedAt": "2026-10-29T10:11:17Z",
+      "completedAt": "2026-10-29T10:11:39Z",
+      "url": "https://github.com/chen9zz/teamwiki/actions/runs/40855540360/job/123385443539"
+    },
+    {
+      "name": "backend",
+      "conclusion": "success",
+      "startedAt": "2026-10-29T10:11:17Z",
+      "completedAt": "2026-10-29T10:12:34Z",
+      "url": "https://github.com/chen9zz/teamwiki/actions/runs/40855540360/job/123385443777"
+    },
+    {
+      "name": "containers",
+      "conclusion": "success",
+      "startedAt": "2026-10-29T10:11:18Z",
+      "completedAt": "2026-10-29T10:13:34Z",
+      "url": "https://github.com/chen9zz/teamwiki/actions/runs/40855540360/job/123385443962"
+    }
+  ],
+  "observed_log_summaries": {
+    "backend": "198 passed in27.71s; separate existing-page migration/backfill test; downgrade base then upgrade head passed",
+    "frontend": "30 passed; production build and compiled DOM smoke passed",
+    "containers": "full build, seed, real asynchronous worker smoke and7 Chromium cases passed in29.7s"
+  },
+  "limitations": [
+    "CI smoke is not production capacity evidence",
+    "v0.2 benchmark retained separately; no new v0.4 throughput measurement"
+  ]
+}

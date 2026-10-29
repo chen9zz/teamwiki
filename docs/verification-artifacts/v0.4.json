@@ -92,5 +92,28 @@
     "portable export is a bounded synchronous snapshot, not a database backup",
     "atomic imports still serialize structural writes within one workspace",
     "no new v0.4 throughput or production capacity measurement"
-  ]
+  ],
+  "canonical_upgrade": {
+    "version": "0.4.0",
+    "migration": "0003_chinese_search",
+    "readiness": {
+      "database": "ok",
+      "cache": "ok"
+    },
+    "business_data_unchanged": true,
+    "pages": 125,
+    "revisions": 187,
+    "pages_backfilled": 125,
+    "openapi_paths": 28,
+    "backup_readable": true,
+    "database_dump_not_published": true,
+    "chinese_search_smoke": "passed",
+    "portable_export_smoke": "passed"
+  },
+  "remote_ci": {
+    "application_commit": "50ec834b59a5ae284dfb79a8f9edb43a104e9147",
+    "run_id": 40855540360,
+    "conclusion": "success",
+    "artifact": "github-actions-v0.4.json"
+  }
 }

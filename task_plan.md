@@ -54,9 +54,9 @@ Environment: native worktree tool rejected sourceRoot because canonical repo is 
 
 
 ## v0.4 (2026-10-29)
-Status: in_progress
+Status: complete
 - [x] Chinese tokenization, transactional index and existing-page backfill.
 - [x] Metadata-preserving bounded portable ZIP export/import.
 - [x] UI and real browser workflows.
 - [x] Full regression, security review and documented concurrency boundaries.
-- [ ] GitHub CI and canonical/demo synchronization.
+- [x] GitHub CI and canonical/demo synchronization.
